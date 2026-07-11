@@ -51,6 +51,7 @@ cargo test --workspace && cargo run -p airc -- version
 | [docs/DESIGN.md](docs/DESIGN.md) | Types, memory, profiles, lowering, traits/vtables |
 | [docs/AI_NATIVE.md](docs/AI_NATIVE.md) | Memory, errors, process/shell, capabilities, DI/mocks |
 | [docs/AIR_FORMAT.md](docs/AIR_FORMAT.md) | Minimal typed AST schema (air-format v0) |
+| [docs/ENCODING.md](docs/ENCODING.md) | S-expr / JSON / binary; Diff and user-type rules |
 | [docs/OWNERSHIP.md](docs/OWNERSHIP.md) | v0 ownership, `set!`, lexical borrows |
 | [docs/ABSTRACTION.md](docs/ABSTRACTION.md) | Capability vs trait vs vtable layering |
 | [docs/SUBSET.md](docs/SUBSET.md) | Phase 1 bootstrap in/out cut |

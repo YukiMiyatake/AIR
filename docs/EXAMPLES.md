@@ -191,7 +191,7 @@ Runnable JSON fixtures live under [`examples/`](../examples/):
 
 | File | Expected `main` result |
 |------|-------------------------|
-| `sum.air.json` | `55` |
+| `sum.air` / `sum.air.json` | `55` (prefer `.air` S-expr; see [ENCODING.md](ENCODING.md)) |
 | `div.air.json` | `-1` (div by zero → err arm) |
 | `arr.air.json` | `10` |
 | `hello.air.json` | `0` (prints `hello`) |

@@ -1,7 +1,8 @@
 //! AIR reference CLI (Rust) — Phase 1.5 parity with tools/airc for check/run.
 
 use airc::{
-    emit_diags, parse_module_json, print_value, run_module, typecheck_module, value_to_exit_code,
+    emit_diags, parse_module_file, print_sexpr, print_value, run_module, typecheck_module,
+    value_to_exit_code,
 };
 use std::env;
 use std::fs;
@@ -12,8 +13,9 @@ fn usage() -> &'static str {
 
 Usage:
   airc version
-  airc check <file.air.json> [--diag=text|json]
-  airc run   <file.air.json> [--diag=text|json]
+  airc fmt   <file.air|.air.json>     # print canonical S-expr
+  airc check <file.air|.air.json> [--diag=text|json]
+  airc run   <file.air|.air.json> [--diag=text|json]
 "
 }
 
@@ -68,7 +70,7 @@ fn main() -> ExitCode {
         println!("airc {} (rust)", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
-    if cmd != "check" && cmd != "run" {
+    if cmd != "check" && cmd != "run" && cmd != "fmt" {
         eprintln!("unknown command: {cmd}");
         eprint!("{}", usage());
         return ExitCode::from(2);
@@ -87,7 +89,19 @@ fn main() -> ExitCode {
         }
     };
 
-    let module = match parse_module_json(&text) {
+    if cmd == "fmt" {
+        let module = match parse_module_file(&path, &text) {
+            Ok(m) => m,
+            Err(diags) => {
+                emit_diags(&diags, &diag, &path);
+                return ExitCode::from(1);
+            }
+        };
+        print!("{}", print_sexpr(&module.raw));
+        return ExitCode::SUCCESS;
+    }
+
+    let module = match parse_module_file(&path, &text) {
         Ok(m) => m,
         Err(diags) => {
             emit_diags(&diags, &diag, &path);
@@ -123,7 +137,10 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use airc::{parse_module_json, run_module, typecheck_module, with_stdout_capture, AirValue};
+    use airc::{
+        parse_module_file, parse_module_json, run_module, typecheck_module, with_stdout_capture,
+        AirValue,
+    };
 
     fn load(path: &str) -> String {
         std::fs::read_to_string(path)
@@ -132,7 +149,7 @@ mod tests {
     }
 
     fn run_i32(path: &str) -> i32 {
-        let module = parse_module_json(&load(path)).expect("parse");
+        let module = parse_module_file(path, &load(path)).expect("parse");
         typecheck_module(&module).expect("check");
         match run_module(&module).expect("run") {
             AirValue::I32(n) => n,
@@ -143,6 +160,11 @@ mod tests {
     #[test]
     fn sum_example_is_55() {
         assert_eq!(run_i32("examples/sum.air.json"), 55);
+    }
+
+    #[test]
+    fn sum_sexpr_example_is_55() {
+        assert_eq!(run_i32("examples/sum.air"), 55);
     }
 
     #[test]
@@ -162,7 +184,8 @@ mod tests {
 
     #[test]
     fn hello_prints_to_stdout() {
-        let module = parse_module_json(&load("examples/hello.air.json")).expect("parse");
+        let module = parse_module_file("examples/hello.air.json", &load("examples/hello.air.json"))
+            .expect("parse");
         typecheck_module(&module).expect("check");
         let (v, lines) = with_stdout_capture(|| run_module(&module).expect("run"));
         assert_eq!(v, AirValue::I32(0));
@@ -171,7 +194,9 @@ mod tests {
 
     #[test]
     fn bad_move_is_rejected() {
-        let module = parse_module_json(&load("examples/bad_move.air.json")).expect("parse");
+        let module =
+            parse_module_file("examples/bad_move.air.json", &load("examples/bad_move.air.json"))
+                .expect("parse");
         let err = typecheck_module(&module).expect_err("should fail ownership");
         assert!(
             err.iter().any(|d| d.code == "mem.use_after_move"),
@@ -209,7 +234,11 @@ mod tests {
 
     #[test]
     fn bad_borrow_is_rejected() {
-        let module = parse_module_json(&load("examples/bad_borrow.air.json")).expect("parse");
+        let module = parse_module_file(
+            "examples/bad_borrow.air.json",
+            &load("examples/bad_borrow.air.json"),
+        )
+        .expect("parse");
         let err = typecheck_module(&module).expect_err("should fail borrow");
         assert!(
             err.iter().any(|d| d.code == "mem.borrow_conflict"),
