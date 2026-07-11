@@ -20,7 +20,7 @@ Usage:
   airc unpack  <file.airb>         # print S-expr
   airc check   <file.air|.airb> [--diag=text|json]
   airc run     <file.air|.airb> [--diag=text|json]
-  airc compile <file.air|.airb> [--diag=text|json]  # Phase 2 Cranelift (sum-class)
+  airc compile <file.air|.airb> [--diag=text|json]  # Phase 2 Cranelift JIT (sum-class)
 
 Default text encoding is .air (S-expr). .airb is accepted for check/run/fmt/hash/eq/compile.
 .air.json remains accepted for legacy parity.
@@ -201,8 +201,11 @@ fn main() -> ExitCode {
 
     if cli.cmd == "compile" {
         match compile_module(&module) {
-            Ok(()) => {
-                println!("ok: compiled module {}", module.name);
+            Ok(out) => {
+                match out.main {
+                    Some(v) => println!("ok: compiled module {} (jit main => {v})", module.name),
+                    None => println!("ok: compiled module {}", module.name),
+                }
                 ExitCode::SUCCESS
             }
             Err(diags) => {

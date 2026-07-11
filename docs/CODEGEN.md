@@ -1,6 +1,6 @@
 # AIR Codegen (Phase 2)
 
-Status: **Cranelift IR MVP** for the `sum`-class subset. Interpreter remains the general execution path (`airc run`). No object / executable emit yet.
+Status: **Cranelift JIT MVP** for the `sum`-class subset. Interpreter remains the general execution path (`airc run`). Object / linked executable emit is still future work.
 
 ## Goal
 
@@ -14,7 +14,7 @@ Lower a typechecked air-format AST to a **native** artifact for `std` / hosted f
 | LLVM | Mature opts, broad targets | Heavy build, C++/cmake coupling | Later / optional |
 | Custom | Full control | Too much work for Phase 2 | Reject for now |
 
-**Backend:** `cranelift-codegen` / `cranelift-frontend` / `cranelift-native` in `crates/airc`.
+**Backend:** `cranelift-codegen` / `cranelift-frontend` / `cranelift-native` / `cranelift-module` / `cranelift-jit` in `crates/airc`.
 
 ## Pipeline
 
@@ -25,7 +25,8 @@ Lower a typechecked air-format AST to a **native** artifact for `std` / hosted f
 typed AST
    │ airc compile  (Phase 2)
    ▼
-Cranelift IR  →  host ISA machcode (in-memory)
+Cranelift IR  →  JITModule (host ISA)
+                 →  call parameterless main() -> i32  (demo)
                  →  object / executable (later)
 ```
 
@@ -38,7 +39,7 @@ Cranelift IR  →  host ISA machcode (in-memory)
 - `fn` with `i32` params / `i32` return
 - `lit` / `var` / `seq` / `let` / `set!` / `if` / `loop` / `break` / `return`
 - Builtin calls: `+ - * /` and `<= < > >= == !=` on `i32` (wrapping arith, matching the interpreter)
-- Host ISA: verify Cranelift IR, then `Context::compile` (no `.o` / link yet)
+- JIT: verify + define into `JITModule`; if `main () i32` exists, call it and report the `i32`
 
 **Out (later)**
 
@@ -60,11 +61,16 @@ Unsupported constructs yield `codegen.unsupported`. Cranelift failures yield `co
 airc compile <file.air|.airb> [--diag=text|json]
 ```
 
-Typechecks, then lowers supported modules (e.g. `examples/sum.air`) through Cranelift.  
+Typechecks, lowers supported modules through Cranelift, JIT-compiles, and when `main` is parameterless prints e.g.:
+
+```text
+ok: compiled module sum (jit main => 55)
+```
+
 `-o` / object emit is still future work.
 
 ## Open questions
 
-1. Object format: `*.o` + system linker vs Cranelift JIT demo that runs `main`?
+1. Object format: `*.o` + system linker (next) — JIT demo for `main` is done
 2. Hosted runtime for `cap.print`: thin `libc`/`std` glue vs keep interpreter-only for I/O in MVP?
 3. Freestanding first binary: `main`-less `_start` sketch vs hosted-only MVP?
