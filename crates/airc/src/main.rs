@@ -1,8 +1,8 @@
 //! AIR primary CLI (Rust) — Phase 1.5+ toolchain (`tools/airc` is the TS oracle).
 
 use airc::{
-    ast_digest_hex, ast_eq, emit_diags, load_module_path, pack_airb, print_sexpr, print_value,
-    run_module, typecheck_module, unpack_airb, value_to_exit_code,
+    ast_digest_hex, ast_eq, compile_module, emit_diags, load_module_path, pack_airb, print_sexpr,
+    print_value, run_module, typecheck_module, unpack_airb, value_to_exit_code,
 };
 use std::env;
 use std::fs;
@@ -13,15 +13,16 @@ fn usage() -> &'static str {
 
 Usage:
   airc version
-  airc fmt    <file.air|.airb>    # print canonical S-expr (.air.json legacy)
-  airc hash   <file.air|.airb>    # SHA-256 of structural AST
-  airc eq     <fileA> <fileB>     # exit 0 if same AST
-  airc pack   <file.air> <out.airb>
-  airc unpack <file.airb>         # print S-expr
-  airc check  <file.air|.airb> [--diag=text|json]
-  airc run    <file.air|.airb> [--diag=text|json]
+  airc fmt     <file.air|.airb>    # print canonical S-expr (.air.json legacy)
+  airc hash    <file.air|.airb>    # SHA-256 of structural AST
+  airc eq      <fileA> <fileB>     # exit 0 if same AST
+  airc pack    <file.air> <out.airb>
+  airc unpack  <file.airb>         # print S-expr
+  airc check   <file.air|.airb> [--diag=text|json]
+  airc run     <file.air|.airb> [--diag=text|json]
+  airc compile <file.air|.airb> [--diag=text|json]  # Phase 2 stub (Cranelift)
 
-Default text encoding is .air (S-expr). .airb is accepted for check/run/fmt/hash/eq.
+Default text encoding is .air (S-expr). .airb is accepted for check/run/fmt/hash/eq/compile.
 .air.json remains accepted for legacy parity.
 "
 }
@@ -95,7 +96,7 @@ fn main() -> ExitCode {
     }
 
     match cli.cmd.as_str() {
-        "fmt" | "hash" | "check" | "run" | "unpack" => {
+        "fmt" | "hash" | "check" | "run" | "unpack" | "compile" => {
             if cli.files.len() != 1 {
                 eprintln!("`{}` needs exactly one file", cli.cmd);
                 eprint!("{}", usage());
@@ -198,18 +199,31 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    match run_module(&module) {
-        Ok(v) => {
-            print_value(&v);
-            ExitCode::from(value_to_exit_code(&v))
+    if cli.cmd == "compile" {
+        match compile_module(&module) {
+            Ok(()) => {
+                println!("ok: compiled module {}", module.name);
+                ExitCode::SUCCESS
+            }
+            Err(diags) => {
+                emit_diags(&diags, &cli.diag, path);
+                ExitCode::from(1)
+            }
         }
-        Err(e) => {
-            emit_diags(
-                &[airc::diag::err("runtime.abort", e.to_string())],
-                &cli.diag,
-                path,
-            );
-            ExitCode::from(1)
+    } else {
+        match run_module(&module) {
+            Ok(v) => {
+                print_value(&v);
+                ExitCode::from(value_to_exit_code(&v))
+            }
+            Err(e) => {
+                emit_diags(
+                    &[airc::diag::err("runtime.abort", e.to_string())],
+                    &cli.diag,
+                    path,
+                );
+                ExitCode::from(1)
+            }
         }
     }
 }
