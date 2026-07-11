@@ -27,6 +27,7 @@ Human ergonomic sugar is secondary and must desugar into the above.
 | File/net | ambient open | ambient open | mostly ambient | **Capability-gated** (`cap.fs`, `cap.net`, …) |
 | Concurrency | threads + shared mem | goroutine + channel (+ GC) | threads/async + ownership | **Hosted: tasks + channels**; **freestanding: explicit low-level** |
 | Top-level effects | linkers / static ctors | `init` side effects | more restrained | **No top-level effects**; only `main` + passed caps |
+| Abstraction / DI | classes + virtuals | interfaces (not prototypes) | traits (+ `dyn`) | **Traits/interfaces + explicit DI + explicit vtables**; no class/prototype OOP |
 
 AIR is not a clone of any one of these languages. It **re-assembles** the parts that stay explicit under AI authorship.
 
@@ -146,6 +147,37 @@ Shared mutable state across tasks requires synchronization types or `unsafe`. Ow
 
 ---
 
+## Abstraction, DI, and mocks
+
+Mocks and dependency injection need **substitutability**, not prototypes.
+
+| Adopt | Reject |
+|-------|--------|
+| Traits / interfaces | Class inheritance as the core model |
+| Explicit DI (pass dependencies) | Ambient service locators / monkey-patching |
+| **Explicit vtables** (function-pointer structs) | JS-style prototype chains |
+| Monomorphized static dispatch when impl is known | Hidden virtual dispatch as the only style |
+
+### Why not prototypes
+
+JS prototypes mutate shared delegation at runtime. That hides the active implementation from the AST, breaks static reasoning, and is a poor fit for ownership, capabilities, and kernel code.
+
+Go’s strength for testing is **interfaces**, not prototypes. Rust’s is **traits**. AIR follows that family.
+
+### Why vtables are wanted
+
+An **explicit** ops/vtable value is AI-Native:
+
+- Tests swap a mock `FileOps` without patching globals.
+- Drivers and freestanding code already look like ops tables.
+- Dispatch targets appear in data the agent can see and patch.
+
+Static trait monomorphization covers the zero-cost path; explicit vtables cover runtime substitution. Dynamic trait objects (`dyn`-like fat pointers) may come later as sugar over the same idea.
+
+Normative detail: [DESIGN.md](DESIGN.md) § Abstraction, DI, and mocks.
+
+---
+
 ## Diagnostics (agent loop)
 
 Toolchain outputs should be structured (stable codes), for example:
@@ -170,6 +202,7 @@ Agents patch AST from these codes; human prose is secondary.
 | File/net/time/rand | Capability-gated |
 | Concurrency | Hosted tasks+channels; freestanding explicit low-level |
 | Startup | No ambient top-level OS effects |
+| Abstraction / DI | Traits/interfaces + explicit DI + **explicit vtables**; no class/prototype OOP |
 
 ## Non-goals of this document
 

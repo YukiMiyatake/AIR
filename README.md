@@ -17,8 +17,8 @@ Design documentation (**design v0.1 systems**). Toolchain not implemented yet. E
 | Doc | Contents |
 |-----|----------|
 | [docs/VISION.md](docs/VISION.md) | Why AIR exists; systems + AI-first goals |
-| [docs/DESIGN.md](docs/DESIGN.md) | Types, memory, profiles, lowering |
-| [docs/AI_NATIVE.md](docs/AI_NATIVE.md) | Memory, errors, process/shell, capabilities (AI-Native defaults) |
+| [docs/DESIGN.md](docs/DESIGN.md) | Types, memory, profiles, lowering, traits/vtables |
+| [docs/AI_NATIVE.md](docs/AI_NATIVE.md) | Memory, errors, process/shell, capabilities, DI/mocks |
 | [docs/EXAMPLES.md](docs/EXAMPLES.md) | Sketches (pending static rewrite) |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Typed bootstrap → native/freestanding → GP growth |
 
