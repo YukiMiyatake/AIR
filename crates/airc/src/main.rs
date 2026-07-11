@@ -1,4 +1,4 @@
-//! AIR reference CLI (Rust) — Phase 1.5 parity with tools/airc for check/run.
+//! AIR primary CLI (Rust) — Phase 1.5+ toolchain (`tools/airc` is the TS oracle).
 
 use airc::{
     ast_digest_hex, ast_eq, emit_diags, load_module_path, pack_airb, print_sexpr, print_value,
