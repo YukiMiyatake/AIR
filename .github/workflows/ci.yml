@@ -54,16 +54,16 @@ jobs:
       - name: CLI smoke (Rust)
         run: |
           set +e
-          cargo run -q -p airc -- run examples/sum.air.json
+          cargo run -q -p airc -- run examples/sum.air
           code=$?
           set -e
           test "$code" -eq 55
           set +e
-          cargo run -q -p airc -- check examples/bad_move.air.json
+          cargo run -q -p airc -- check examples/bad_move.air
           code=$?
           set -e
           test "$code" -ne 0
-          out=$(cargo run -q -p airc -- run examples/hello.air.json)
+          out=$(cargo run -q -p airc -- run examples/hello.air)
           printf '%s\n' "$out" | head -n1 | grep -qx 'hello'
 
   docker:

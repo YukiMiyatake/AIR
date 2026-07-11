@@ -187,24 +187,25 @@ After the inner `let` ends, `set!` / use is allowed again (`borrow_ok.air.json` 
 
 ## Using these examples
 
-Runnable JSON fixtures live under [`examples/`](../examples/):
+Primary fixtures are **S-expr** (`.air`). JSON (`.air.json`) remains for the TS bootstrap and parity checks — see [ENCODING.md](ENCODING.md).
 
 | File | Expected `main` result |
 |------|-------------------------|
-| `sum.air` / `sum.air.json` | `55` (prefer `.air` S-expr; see [ENCODING.md](ENCODING.md)) |
-| `div.air.json` | `-1` (div by zero → err arm) |
-| `arr.air.json` | `10` |
-| `hello.air.json` | `0` (prints `hello`) |
-| `bad_move.air.json` | **check fails** (`mem.use_after_move`) |
-| `overflow.air.json` | `-1` (`checked_add` overflow → err arm) |
-| `aset.air.json` | `9` |
-| `bad_borrow.air.json` | **check fails** (`mem.borrow_conflict`) |
-| `borrow_ok.air.json` | `7` |
+| `sum.air` | `55` |
+| `div.air` | `-1` (div by zero → err arm) |
+| `arr.air` | `10` |
+| `hello.air` | `0` (prints `hello`) |
+| `bad_move.air` | **check fails** (`mem.use_after_move`) |
+| `overflow.air` | `-1` (`checked_add` overflow → err arm) |
+| `aset.air` | `9` |
+| `bad_borrow.air` | **check fails** (`mem.borrow_conflict`) |
+| `borrow_ok.air` | `7` |
 
 ```bash
-docker compose run --rm dev cargo run -p airc -- run examples/arr.air.json
+docker compose run --rm dev cargo run -p airc -- run examples/arr.air
+docker compose run --rm dev cargo run -p airc -- fmt examples/sum.air.json
 ```
 
-- Token benchmarks: minify JSON AST vs equivalent Rust/C for the same suite.
-- Round-trip tests (when implemented) must accept these modules as air-format v0.
+- Token benchmarks: minify JSON AST vs S-expr vs equivalent Rust/C for the same suite.
+- Round-trip: `.air` AST must match sibling `.air.json` (tested in Rust).
 - Do not reintroduce dynamic `list` / untyped `num` / ad-hoc `host` tags.

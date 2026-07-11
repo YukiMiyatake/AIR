@@ -189,6 +189,20 @@ fn write_pretty(v: &Value, indent: usize, out: &mut String) {
                 out.push_str("()");
                 return;
             }
+            // (lit str "hello") — always quote lit payload when width is str
+            if items.first().and_then(|x| x.as_str()) == Some("lit")
+                && items.len() == 3
+                && items[1].as_str() == Some("str")
+            {
+                out.push_str("(lit str ");
+                if let Value::String(s) = &items[2] {
+                    push_quoted(s, out);
+                } else {
+                    write_pretty(&items[2], indent, out);
+                }
+                out.push(')');
+                return;
+            }
             out.push('(');
             let multiline = should_multiline(items);
             if !multiline {

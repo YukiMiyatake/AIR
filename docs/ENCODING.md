@@ -102,9 +102,10 @@ Retained for Phase 1 examples and TS tooling. Prefer `.air` for new fixtures onc
 
 | Step | Deliverable |
 |------|-------------|
-| Now | [ENCODING.md](ENCODING.md); Rust `fmt` + `.air` parse; `examples/sum.air` |
-| Next | Convert remaining examples; `airc check|run` auto-detect `.air` / `.air.json` |
-| Later | Binary pack; AST hash CLI; deprecate JSON as default in docs |
+| Done | [ENCODING.md](ENCODING.md); Rust `fmt` + `.air` parse; `examples/sum.air` |
+| Done | All Phase 1 examples as `.air` (+ `.air.json` parity for TS) |
+| Next | AST hash / structural eq CLI; improve line-oriented `fmt` |
+| Later | Binary `.airb` pack; deprecate JSON as default in docs |
 
 ## Non-goals
 

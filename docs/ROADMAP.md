@@ -40,8 +40,8 @@ In particular: `examples/hello.air.json` prints `hello` on program stdout (asser
 | Step | Deliverable |
 |------|-------------|
 | Docs | [ENCODING.md](ENCODING.md) — tags closed; user names open; Diff via S-expr |
-| Now | Rust `fmt` + `.air` parse; `examples/sum.air` |
-| Next | Migrate examples to `.air`; AST hash / structural eq CLI |
+| Done | Rust `fmt` + `.air` parse; all Phase 1 `examples/*.air` |
+| Next | AST hash CLI; line-oriented `fmt` polish |
 | Later | Binary `.airb` pack (syntax tags only; symbols interned) |
 
 ### Hosted I/O priority (do not wait for Phase 3/5)

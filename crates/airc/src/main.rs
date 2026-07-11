@@ -159,33 +159,28 @@ mod tests {
 
     #[test]
     fn sum_example_is_55() {
-        assert_eq!(run_i32("examples/sum.air.json"), 55);
-    }
-
-    #[test]
-    fn sum_sexpr_example_is_55() {
         assert_eq!(run_i32("examples/sum.air"), 55);
     }
 
     #[test]
     fn div_by_zero_match_is_minus_one() {
-        assert_eq!(run_i32("examples/div.air.json"), -1);
+        assert_eq!(run_i32("examples/div.air"), -1);
     }
 
     #[test]
     fn array_sum_is_10() {
-        assert_eq!(run_i32("examples/arr.air.json"), 10);
+        assert_eq!(run_i32("examples/arr.air"), 10);
     }
 
     #[test]
     fn hello_returns_zero() {
-        assert_eq!(run_i32("examples/hello.air.json"), 0);
+        assert_eq!(run_i32("examples/hello.air"), 0);
     }
 
     #[test]
     fn hello_prints_to_stdout() {
-        let module = parse_module_file("examples/hello.air.json", &load("examples/hello.air.json"))
-            .expect("parse");
+        let module =
+            parse_module_file("examples/hello.air", &load("examples/hello.air")).expect("parse");
         typecheck_module(&module).expect("check");
         let (v, lines) = with_stdout_capture(|| run_module(&module).expect("run"));
         assert_eq!(v, AirValue::I32(0));
@@ -195,8 +190,7 @@ mod tests {
     #[test]
     fn bad_move_is_rejected() {
         let module =
-            parse_module_file("examples/bad_move.air.json", &load("examples/bad_move.air.json"))
-                .expect("parse");
+            parse_module_file("examples/bad_move.air", &load("examples/bad_move.air")).expect("parse");
         let err = typecheck_module(&module).expect_err("should fail ownership");
         assert!(
             err.iter().any(|d| d.code == "mem.use_after_move"),
@@ -206,7 +200,7 @@ mod tests {
 
     #[test]
     fn checked_add_overflow_is_minus_one() {
-        assert_eq!(run_i32("examples/overflow.air.json"), -1);
+        assert_eq!(run_i32("examples/overflow.air"), -1);
     }
 
     #[test]
@@ -229,16 +223,14 @@ mod tests {
 
     #[test]
     fn aset_then_aget_is_nine() {
-        assert_eq!(run_i32("examples/aset.air.json"), 9);
+        assert_eq!(run_i32("examples/aset.air"), 9);
     }
 
     #[test]
     fn bad_borrow_is_rejected() {
-        let module = parse_module_file(
-            "examples/bad_borrow.air.json",
-            &load("examples/bad_borrow.air.json"),
-        )
-        .expect("parse");
+        let module =
+            parse_module_file("examples/bad_borrow.air", &load("examples/bad_borrow.air"))
+                .expect("parse");
         let err = typecheck_module(&module).expect_err("should fail borrow");
         assert!(
             err.iter().any(|d| d.code == "mem.borrow_conflict"),
@@ -248,6 +240,29 @@ mod tests {
 
     #[test]
     fn borrow_ok_returns_seven() {
-        assert_eq!(run_i32("examples/borrow_ok.air.json"), 7);
+        assert_eq!(run_i32("examples/borrow_ok.air"), 7);
+    }
+
+    #[test]
+    fn air_matches_json_ast_for_suite() {
+        use airc::{normalize_lit_digits, parse_sexpr_value, print_sexpr};
+        let names = [
+            "sum", "div", "arr", "hello", "overflow", "aset", "borrow_ok", "bad_move", "bad_borrow",
+        ];
+        for name in names {
+            let json_path = format!("examples/{name}.air.json");
+            let air_path = format!("examples/{name}.air");
+            let json_mod = parse_module_file(&json_path, &load(&json_path)).expect("json");
+            let air_mod = parse_module_file(&air_path, &load(&air_path)).expect("air");
+            assert_eq!(
+                json_mod.raw, air_mod.raw,
+                "{name}: .air AST != .air.json AST"
+            );
+            // fmt round-trip
+            let printed = print_sexpr(&json_mod.raw);
+            let mut back = parse_sexpr_value(&printed).expect("reparse");
+            normalize_lit_digits(&mut back);
+            assert_eq!(json_mod.raw, back, "{name}: fmt round-trip");
+        }
     }
 }
