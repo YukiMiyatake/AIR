@@ -167,6 +167,24 @@ v0: first argument must be a local place `["var", name]`. Returns `i32` `0`. OOB
 
 ---
 
+## Example 7 — Lexical borrow (`borrow` / `mem.borrow_conflict`)
+
+Held shared borrow via `let` forbids `set!` on the place until the binding ends:
+
+```json
+["mod", "bad_borrow",
+  ["fn", "main", [], "i32",
+    ["let", [["x", "i32", ["lit", "i32", "1"]]],
+      ["let", [["r", ["ref", "shared", "i32"], ["borrow", "shared", ["var", "x"]]]],
+        ["seq",
+          ["set!", "x", ["lit", "i32", "2"]],
+          ["lit", "i32", "0"]]]]]]
+```
+
+After the inner `let` ends, `set!` / use is allowed again (`borrow_ok.air.json` → `7`).
+
+---
+
 ## Using these examples
 
 Runnable JSON fixtures live under [`examples/`](../examples/):
@@ -180,6 +198,8 @@ Runnable JSON fixtures live under [`examples/`](../examples/):
 | `bad_move.air.json` | **check fails** (`mem.use_after_move`) |
 | `overflow.air.json` | `-1` (`checked_add` overflow → err arm) |
 | `aset.air.json` | `9` |
+| `bad_borrow.air.json` | **check fails** (`mem.borrow_conflict`) |
+| `borrow_ok.air.json` | `7` |
 
 ```bash
 docker compose run --rm dev cargo run -p airc -- run examples/arr.air.json

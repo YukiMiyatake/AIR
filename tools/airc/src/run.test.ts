@@ -83,3 +83,25 @@ test("aset then aget is 9", () => {
   assert.equal(v.tag, "i32");
   if (v.tag === "i32") assert.equal(v.v, 9);
 });
+
+test("check rejects set! under shared borrow", () => {
+  const text = readFileSync(join(root, "examples/bad_borrow.air.json"), "utf8");
+  const parsed = parseModuleJson(text);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const checked = typecheckModule(parsed.module);
+  assert.equal(checked.ok, false);
+  if (checked.ok) return;
+  assert.ok(checked.diags.some((d) => d.code === "mem.borrow_conflict"));
+});
+
+test("borrow_ok returns 7", () => {
+  const text = readFileSync(join(root, "examples/borrow_ok.air.json"), "utf8");
+  const parsed = parseModuleJson(text);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(typecheckModule(parsed.module).ok, true);
+  const v = runModule(parsed.module);
+  assert.equal(v.tag, "i32");
+  if (v.tag === "i32") assert.equal(v.v, 7);
+});

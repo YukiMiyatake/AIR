@@ -206,4 +206,19 @@ mod tests {
     fn aset_then_aget_is_nine() {
         assert_eq!(run_i32("examples/aset.air.json"), 9);
     }
+
+    #[test]
+    fn bad_borrow_is_rejected() {
+        let module = parse_module_json(&load("examples/bad_borrow.air.json")).expect("parse");
+        let err = typecheck_module(&module).expect_err("should fail borrow");
+        assert!(
+            err.iter().any(|d| d.code == "mem.borrow_conflict"),
+            "expected mem.borrow_conflict, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn borrow_ok_returns_seven() {
+        assert_eq!(run_i32("examples/borrow_ok.air.json"), 7);
+    }
 }

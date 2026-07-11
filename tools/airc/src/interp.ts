@@ -181,6 +181,10 @@ function evalExpr(e: Expr, env: Map<string, AirValue>, fns: Map<string, FnItem>)
     }
     case "as":
       return evalExpr(e[2], env, fns);
+    case "borrow":
+      return evalExpr(e[2] as Expr, env, fns);
+    case "move":
+      return evalExpr(e[1] as Expr, env, fns);
     case "match": {
       const scr = evalExpr(e[1], env, fns);
       for (let i = 2; i < e.length; i++) {

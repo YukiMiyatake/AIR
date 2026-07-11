@@ -27,11 +27,27 @@ function isCopy(t: Ty): boolean {
   return false;
 }
 
-type Env = Map<string, { ty: Ty; moved: boolean }>;
+type Slot = { ty: Ty; moved: boolean; shared: number; mutBorrowed: boolean };
+type Env = Map<string, Slot>;
+
+function slotNew(ty: Ty): Slot {
+  return { ty, moved: false, shared: 0, mutBorrowed: false };
+}
+
+function isBorrowed(s: { shared: number; mutBorrowed: boolean }): boolean {
+  return s.shared > 0 || s.mutBorrowed;
+}
 
 function cloneEnv(env: Env): Env {
   const out: Env = new Map();
-  for (const [k, v] of env) out.set(k, { ty: v.ty, moved: v.moved });
+  for (const [k, v] of env) {
+    out.set(k, {
+      ty: v.ty,
+      moved: v.moved,
+      shared: v.shared,
+      mutBorrowed: v.mutBorrowed,
+    });
+  }
   return out;
 }
 
@@ -40,7 +56,61 @@ function mergeMoved(dst: Env, a: Env, b: Env): void {
     const ma = a.get(name)?.moved ?? slot.moved;
     const mb = b.get(name)?.moved ?? slot.moved;
     slot.moved = ma || mb;
+    const sa = a.get(name)?.shared ?? slot.shared;
+    const sb = b.get(name)?.shared ?? slot.shared;
+    slot.shared = Math.max(sa, sb);
+    const mua = a.get(name)?.mutBorrowed ?? slot.mutBorrowed;
+    const mub = b.get(name)?.mutBorrowed ?? slot.mutBorrowed;
+    slot.mutBorrowed = mua || mub;
   }
+}
+
+function acquireBorrow(
+  env: Env,
+  name: string,
+  kind: "shared" | "mut",
+  diags: Diagnostic[],
+): boolean {
+  const slot = env.get(name);
+  if (!slot) {
+    diags.push(err(`unknown variable ${name}`, "type.unbound"));
+    return false;
+  }
+  if (slot.moved) {
+    diags.push(err(`borrow of moved local \`${name}\``, "mem.use_after_move"));
+    return false;
+  }
+  if (kind === "mut") {
+    if (isBorrowed(slot)) {
+      diags.push(err(`mut borrow conflicts on \`${name}\``, "mem.borrow_conflict"));
+      return false;
+    }
+    slot.mutBorrowed = true;
+  } else {
+    if (slot.mutBorrowed) {
+      diags.push(
+        err(`shared borrow conflicts with mut on \`${name}\``, "mem.borrow_conflict"),
+      );
+      return false;
+    }
+    slot.shared += 1;
+  }
+  return true;
+}
+
+function releaseBorrow(env: Env, name: string, kind: string): void {
+  const slot = env.get(name);
+  if (!slot) return;
+  if (kind === "mut") slot.mutBorrowed = false;
+  else if (slot.shared > 0) slot.shared -= 1;
+}
+
+function directBorrowOf(e: Expr): { place: string; kind: "shared" | "mut" } | null {
+  if (!Array.isArray(e) || e[0] !== "borrow") return null;
+  if (e[1] !== "shared" && e[1] !== "mut") return null;
+  const place = e[2];
+  if (!Array.isArray(place) || place[0] !== "var" || typeof place[1] !== "string") return null;
+  return { place: place[1], kind: e[1] };
 }
 
 function err(message: string, code: string): Diagnostic {
@@ -75,7 +145,13 @@ function checkExpr(
         diags.push(err(`use of moved local \`${e[1]}\``, "mem.use_after_move"));
         return null;
       }
-      if (!isCopy(slot.ty)) slot.moved = true;
+      if (!isCopy(slot.ty)) {
+        if (isBorrowed(slot)) {
+          diags.push(err(`move of borrowed local \`${e[1]}\``, "mem.borrow_conflict"));
+          return null;
+        }
+        slot.moved = true;
+      }
       return slot.ty;
     }
     case "seq": {
@@ -88,21 +164,30 @@ function checkExpr(
     }
     case "let": {
       const child = cloneEnv(env);
+      const held: { place: string; kind: "shared" | "mut" }[] = [];
       for (const [name, tyAnno, init] of e[1]) {
+        const b = directBorrowOf(init);
+        if (b) held.push(b);
         const it = checkExpr(init, child, diags, fns, breakTy);
         if (!it) return null;
         if (tyAnno && !tyEq(tyAnno, it)) {
           diags.push(err(`let ${name} type mismatch`, "type.mismatch"));
           return null;
         }
-        child.set(name, { ty: tyAnno ?? it, moved: false });
+        child.set(name, slotNew(tyAnno ?? it));
       }
-      return checkExpr(e[2], child, diags, fns, breakTy);
+      const out = checkExpr(e[2], child, diags, fns, breakTy);
+      for (const h of held) releaseBorrow(child, h.place, h.kind);
+      return out;
     }
     case "set!": {
       const slot = env.get(e[1]);
       if (!slot) {
         diags.push(err(`set! unknown ${e[1]}`, "type.unbound"));
+        return null;
+      }
+      if (isBorrowed(slot)) {
+        diags.push(err(`set! of borrowed local \`${e[1]}\``, "mem.borrow_conflict"));
         return null;
       }
       const it = checkExpr(e[2], env, diags, fns, breakTy);
@@ -241,10 +326,7 @@ function checkExpr(
             diags.push(err("ok/err pattern needs Result", "type.match"));
             return null;
           }
-          child.set(pat[1], {
-            ty: pat[0] === "ok" ? scr[1] : scr[2],
-            moved: false,
-          });
+          child.set(pat[1], slotNew(pat[0] === "ok" ? scr[1] : scr[2]));
         }
         const bt = checkExpr(arm[1], child, diags, fns, breakTy);
         if (!bt) return null;
@@ -285,9 +367,46 @@ function checkExpr(
       }
       return "i32";
     }
-    case "borrow":
-    case "move":
-      return checkExpr(e[2] as Expr, env, diags, fns, breakTy);
+    case "borrow": {
+      const kind = e[1];
+      const place = e[2];
+      if (!Array.isArray(place) || place[0] !== "var" || typeof place[1] !== "string") {
+        diags.push(err('v0 borrow place must be ["var", name]', "type.borrow"));
+        return null;
+      }
+      const name = place[1];
+      const slot = env.get(name);
+      if (!slot) {
+        diags.push(err(`unknown variable ${name}`, "type.unbound"));
+        return null;
+      }
+      const inner = slot.ty;
+      if (!acquireBorrow(env, name, kind, diags)) return null;
+      return ["ref", kind, inner];
+    }
+    case "move": {
+      const place = e[1];
+      if (!Array.isArray(place) || place[0] !== "var" || typeof place[1] !== "string") {
+        diags.push(err('v0 move place must be ["var", name]', "type.move"));
+        return null;
+      }
+      const name = place[1];
+      const slot = env.get(name);
+      if (!slot) {
+        diags.push(err(`unknown variable ${name}`, "type.unbound"));
+        return null;
+      }
+      if (slot.moved) {
+        diags.push(err(`use of moved local \`${name}\``, "mem.use_after_move"));
+        return null;
+      }
+      if (isBorrowed(slot)) {
+        diags.push(err(`move of borrowed local \`${name}\``, "mem.borrow_conflict"));
+        return null;
+      }
+      slot.moved = true;
+      return slot.ty;
+    }
     default:
       diags.push(err("unsupported expr in check", "type.unsupported"));
       return null;
@@ -306,7 +425,7 @@ export function typecheckModule(mod: Module): CheckResult {
   }
   for (const fn of fns.values()) {
     const env: Env = new Map();
-    for (const [n, ty] of fn[2]) env.set(n, { ty, moved: false });
+    for (const [n, ty] of fn[2]) env.set(n, slotNew(ty));
     const breakTy = { current: null as Ty | null };
     const bodyTy = checkExpr(fn[4], env, diags, fns, breakTy);
     if (!bodyTy) continue;

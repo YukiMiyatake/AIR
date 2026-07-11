@@ -260,6 +260,24 @@ function parseExpr(x: unknown, diags: Diagnostic[]): Expr | null {
       }
       return ["cap", x[1], ...args];
     }
+    case "borrow": {
+      if (x.length !== 3 || (x[1] !== "shared" && x[1] !== "mut")) {
+        diags.push(err('borrow must be [borrow, "shared"|"mut", place]'));
+        return null;
+      }
+      const place = parseExpr(x[2], diags);
+      if (place === null) return null;
+      return ["borrow", x[1], place];
+    }
+    case "move": {
+      if (x.length !== 2) {
+        diags.push(err("move must be [move, place]"));
+        return null;
+      }
+      const place = parseExpr(x[1], diags);
+      if (place === null) return null;
+      return ["move", place];
+    }
     default:
       diags.push(err(`unknown expr tag: ${tag}`));
       return null;
