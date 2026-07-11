@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
+import { typecheckModule } from "./check.js";
 import { emitDiags } from "./diag.js";
+import { runModule, valueToExitCode } from "./interp.js";
 import { parseModuleJson } from "./parse.js";
 
 export type DiagMode = "text" | "json";
@@ -15,17 +17,14 @@ export function parseArgs(argv: string[]): {
   let diag: DiagMode = "text";
   let help = false;
 
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!;
+  for (const a of argv) {
     if (a === "-h" || a === "--help") {
       help = true;
       continue;
     }
     if (a.startsWith("--diag=")) {
       const v = a.slice("--diag=".length);
-      if (v !== "text" && v !== "json") {
-        throw new Error(`invalid --diag value: ${v}`);
-      }
+      if (v !== "text" && v !== "json") throw new Error(`invalid --diag value: ${v}`);
       diag = v;
       continue;
     }
@@ -39,7 +38,6 @@ export function parseArgs(argv: string[]): {
     }
     throw new Error(`unexpected argument: ${a}`);
   }
-
   return { cmd, file, diag, help };
 }
 
@@ -67,35 +65,50 @@ export async function main(argv: string[]): Promise<number> {
     console.log(usage());
     return opts.help ? 0 : 2;
   }
-
   if (opts.cmd === "version") {
-    console.log("airc 0.1.0 (phase1-parser)");
+    console.log("airc 0.1.0 (phase1-check-run)");
     return 0;
   }
 
-  if (opts.cmd === "check" || opts.cmd === "run") {
-    if (!opts.file) {
-      console.error(`missing file for \`${opts.cmd}\``);
-      console.error(usage());
-      return 2;
-    }
-    const text = await readFile(opts.file, "utf8");
-    const parsed = parseModuleJson(text);
-    if (!parsed.ok) {
-      emitDiags(parsed.diags, opts.diag, opts.file);
-      return 1;
-    }
-    if (opts.cmd === "check") {
-      console.log(`ok: parsed module ${parsed.module[1]}`);
-      return 0;
-    }
-    console.error(
-      `airc run: parse ok; interpret not implemented yet (module=${parsed.module[1]})`,
+  if (opts.cmd !== "check" && opts.cmd !== "run") {
+    console.error(`unknown command: ${opts.cmd}`);
+    console.error(usage());
+    return 2;
+  }
+  if (!opts.file) {
+    console.error(`missing file for \`${opts.cmd}\``);
+    console.error(usage());
+    return 2;
+  }
+
+  const text = await readFile(opts.file, "utf8");
+  const parsed = parseModuleJson(text);
+  if (!parsed.ok) {
+    emitDiags(parsed.diags, opts.diag, opts.file);
+    return 1;
+  }
+  const checked = typecheckModule(parsed.module);
+  if (!checked.ok) {
+    emitDiags(checked.diags, opts.diag, opts.file);
+    return 1;
+  }
+  if (opts.cmd === "check") {
+    console.log(`ok: checked module ${parsed.module[1]}`);
+    return 0;
+  }
+
+  try {
+    const v = runModule(parsed.module);
+    if (v.tag === "i32") console.log(v.v);
+    else console.log(JSON.stringify(v));
+    return valueToExitCode(v);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    emitDiags(
+      [{ severity: "error", code: "runtime.abort", message }],
+      opts.diag,
+      opts.file,
     );
     return 1;
   }
-
-  console.error(`unknown command: ${opts.cmd}`);
-  console.error(usage());
-  return 2;
 }
