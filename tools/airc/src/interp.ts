@@ -6,7 +6,8 @@ export type AirValue =
   | { tag: "str"; v: string }
   | { tag: "ok"; v: AirValue }
   | { tag: "err"; v: AirValue }
-  | { tag: "array"; elems: AirValue[] };
+  | { tag: "array"; elems: AirValue[] }
+  | { tag: "struct"; name: string; fields: Map<string, AirValue> };
 
 /** When set, `cap.print` appends here instead of writing to console. */
 let stdoutCapture: string[] | null = null;
@@ -204,6 +205,23 @@ function evalExpr(e: Expr, env: Map<string, AirValue>, fns: Map<string, FnItem>)
     case "array_lit": {
       const elems = (e.slice(2) as Expr[]).map((x) => evalExpr(x, env, fns));
       return { tag: "array", elems };
+    }
+    case "struct_lit": {
+      const name = e[1] as string;
+      const fields = new Map<string, AirValue>();
+      for (let i = 2; i < e.length; i++) {
+        const pair = e[i] as [string, Expr];
+        fields.set(pair[0], evalExpr(pair[1], env, fns));
+      }
+      return { tag: "struct", name, fields };
+    }
+    case "field": {
+      const place = evalExpr(e[1] as Expr, env, fns);
+      const fname = e[2] as string;
+      if (place.tag !== "struct") throw new Error("runtime.field of non-struct");
+      const v = place.fields.get(fname);
+      if (!v) throw new Error(`runtime.field missing ${fname}`);
+      return v;
     }
     case "cap": {
       if (e[1] === "print") {

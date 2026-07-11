@@ -330,12 +330,13 @@ fn is_shallow(v: &Value) -> bool {
             }
             let t = a.first().and_then(|x| x.as_str());
             match t {
-                Some("lit" | "var") => true,
+                Some("lit" | "var" | "field") => true,
                 Some("call") => a.len() <= 4 && a[1..].iter().all(|x| {
                     matches!(x, Value::String(_) | Value::Number(_) | Value::Bool(_))
                         || x.as_array().is_some_and(|c| {
                             c.first().and_then(|t| t.as_str()) == Some("var")
                                 || c.first().and_then(|t| t.as_str()) == Some("lit")
+                                || c.first().and_then(|t| t.as_str()) == Some("field")
                         })
                 }),
                 Some("ref" | "array" | "result" | "named") => a.iter().all(is_head_atom) || a.len() <= 4,

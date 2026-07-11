@@ -45,6 +45,8 @@ In particular: `examples/hello.air.json` prints `hello` on program stdout (asser
 | Done | Line-oriented `fmt` polish |
 | Done | TS `.air` parse |
 | Done | Binary `.airb` v1 sketch (`pack` / `unpack`) |
+| Done | User `struct` + `struct_lit` + `field` |
+| Next | User `enum` + `variant` match |
 | Later | Richer binary payloads; deprecate JSON as default |
 
 ### Hosted I/O priority (do not wait for Phase 3/5)

@@ -198,6 +198,15 @@ Mismatched widths require `["as", ty, expr]` first.
 
 Calling a fn pointer: `["call", expr_callee, args...]` where callee type is `["fn", ...]`.
 
+### Field projection (v0)
+
+```json
+["field", place, field_name]
+```
+
+`place` must have type `["named", StructName]`. Returns the field type.  
+v0: all-`Copy` field structs are `Copy`; field reads of `Copy` fields do not move the struct.
+
 ## Complete minimal example (sum 1..10)
 
 ```json
