@@ -46,10 +46,11 @@ Dynamic typing is **out**. Programs do not typecheck → do not run / do not cod
 | `u8` `u16` `u32` `u64` | Unsigned integers |
 | `f32` `f64` | IEEE-754 floats |
 | `usize` `isize` | Pointer-sized ints (target-dependent) |
+| `str` | UTF-8 string (**hosted**; freestanding prefers byte arrays/slices) |
 | `never` | Diverging (optional early) |
 
 There is **no** single `num` type. Arithmetic requires matching widths or **explicit casts**.
-
+Literal and operator rules: [AIR_FORMAT.md](AIR_FORMAT.md) § Literals / Arithmetic.
 ### Pointers and references (target)
 
 | Form | Meaning |
@@ -139,15 +140,18 @@ Stack + locals bytecode for a **typed** subset (bring-up, tests). Not the kernel
 
 ## Control forms (AST)
 
-Same structural tags as before (`seq`, `let`, `set!`, `if`, `loop`, `break`, `return`, `call`), plus typed declarations:
+Normative shapes for the bootstrap subset live in [AIR_FORMAT.md](AIR_FORMAT.md) (**air-format v0**). Summary:
 
-- `["fn", name, params_typed, ret_ty, body]`
-- `["as", ty, expr]` explicit cast
-- `["borrow", mode, place]` / move forms as needed by the checker
-- capability/effect ops instead of a catch-all dynamic `host` where profiles demand it
+| Form | Role |
+|------|------|
+| `seq` / `let` / `set!` / `var` | Sequencing and locals |
+| `if` / `loop` / `break` / `return` / `call` | Control and calls |
+| `match` | Exhaustive split (`Result`, enums) |
+| `as` / `borrow` / `move` | Casts and ownership hooks |
+| `cap` | Hosted effects (replaces ad-hoc dynamic `host`) |
+| `lit` / `array_lit` / `struct_lit` | Typed literals |
 
-Exact AST schema for types will be versioned with `air-format`.
-
+Do not invent alternate tag spellings in examples; extend **air-format** instead.
 ## Mnemonic view
 
 Unchanged requirements: one op per line, explicit slots, **round-trip** with AST. Mnemonics should surface types at function boundaries.

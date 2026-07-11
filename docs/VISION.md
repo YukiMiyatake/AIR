@@ -63,6 +63,7 @@ AIR keeps **systems-level ambition** and changes the representation:
 ## Related docs
 
 - [DESIGN.md](DESIGN.md) — types, memory, execution, profiles
+- [AIR_FORMAT.md](AIR_FORMAT.md) — minimal typed AST (air-format v0)
 - [AI_NATIVE.md](AI_NATIVE.md) — memory/errors/process/shell/capabilities (AI-Native defaults)
 - [EXAMPLES.md](EXAMPLES.md) — sketches (pending rewrite for static/systems model)
 - [ROADMAP.md](ROADMAP.md) — phases
