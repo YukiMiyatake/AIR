@@ -27,7 +27,13 @@ jobs:
         run: npm test
 
       - name: CLI smoke (TS)
-        run: npm run airc -- run examples/sum.air.json
+        run: |
+          set +e
+          npm run airc -- run examples/sum.air.json
+          code=$?
+          set -e
+          # sum.air.json returns 55; that is the process status (PHASE1_DECISIONS), not a CLI failure.
+          test "$code" -eq 55
 
       - uses: dtolnay/rust-toolchain@stable
         with:
