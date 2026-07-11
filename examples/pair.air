@@ -1,0 +1,11 @@
+(mod pair
+  (enum PairE
+    (Pair (i32 i32))
+  )
+  (fn main () i32
+    (match
+      (variant_lit PairE Pair (lit i32 3) (lit i32 4))
+      ((variant PairE Pair a b) (call + (var a) (var b)))
+    )
+  )
+)

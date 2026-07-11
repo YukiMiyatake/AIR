@@ -337,6 +337,11 @@ mod tests {
     }
 
     #[test]
+    fn pair_tuple_variant_sum_is_seven() {
+        assert_eq!(run_i32("examples/pair.air"), 7);
+    }
+
+    #[test]
     fn bad_enum_match_is_rejected() {
         let module = parse_module_file(
             "examples/bad_enum_match.air",
@@ -355,7 +360,7 @@ mod tests {
         use airc::{normalize_lit_digits, pack_airb, parse_sexpr_value, print_sexpr, unpack_airb};
         let names = [
             "sum", "div", "arr", "hello", "overflow", "aset", "borrow_ok", "bad_move", "bad_borrow",
-            "point", "option", "bad_enum_match",
+            "point", "option", "bad_enum_match", "pair",
         ];
         for name in names {
             let json_path = format!("examples/{name}.air.json");

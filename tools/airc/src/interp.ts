@@ -8,7 +8,7 @@ export type AirValue =
   | { tag: "err"; v: AirValue }
   | { tag: "array"; elems: AirValue[] }
   | { tag: "struct"; name: string; fields: Map<string, AirValue> }
-  | { tag: "variant"; enumName: string; variant: string; payload: AirValue | null };
+  | { tag: "variant"; enumName: string; variant: string; payloads: AirValue[] };
 
 /** When set, `cap.print` appends here instead of writing to console. */
 let stdoutCapture: string[] | null = null;
@@ -210,9 +210,13 @@ function evalExpr(e: Expr, env: Map<string, AirValue>, fns: Map<string, FnItem>)
           pat[1] === scr.enumName &&
           pat[2] === scr.variant
         ) {
-          if (typeof pat[3] === "string") {
-            if (!scr.payload) throw new Error("runtime.variant bind");
-            child.set(pat[3], scr.payload);
+          const binds = pat.slice(3);
+          if (binds.length !== scr.payloads.length) {
+            throw new Error("runtime.variant bind arity");
+          }
+          for (let i = 0; i < binds.length; i++) {
+            if (typeof binds[i] !== "string") throw new Error("runtime.variant bind");
+            child.set(binds[i] as string, scr.payloads[i]!);
           }
           return evalExpr(body, child, fns);
         }
@@ -235,8 +239,8 @@ function evalExpr(e: Expr, env: Map<string, AirValue>, fns: Map<string, FnItem>)
     case "variant_lit": {
       const enumName = e[1] as string;
       const variant = e[2] as string;
-      const payload = e.length >= 4 ? evalExpr(e[3] as Expr, env, fns) : null;
-      return { tag: "variant", enumName, variant, payload };
+      const payloads = (e.slice(3) as Expr[]).map((x) => evalExpr(x, env, fns));
+      return { tag: "variant", enumName, variant, payloads };
     }
     case "field": {
       const place = evalExpr(e[1] as Expr, env, fns);

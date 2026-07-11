@@ -141,6 +141,17 @@ test("option variant match is 42", () => {
   if (v.tag === "i32") assert.equal(v.v, 42);
 });
 
+test("pair tuple variant sum is 7", () => {
+  const text = readFileSync(join(root, "examples/pair.air"), "utf8");
+  const parsed = parseModuleFile("examples/pair.air", text);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(typecheckModule(parsed.module).ok, true);
+  const v = runModule(parsed.module);
+  assert.equal(v.tag, "i32");
+  if (v.tag === "i32") assert.equal(v.v, 7);
+});
+
 test("check rejects non-exhaustive enum match", () => {
   const text = readFileSync(join(root, "examples/bad_enum_match.air"), "utf8");
   const parsed = parseModuleFile("examples/bad_enum_match.air", text);

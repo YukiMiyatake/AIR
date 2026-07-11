@@ -168,10 +168,7 @@ fn is_copy(t: &Value, structs: &StructDefs, enums: &EnumDefs) -> bool {
                 }
                 if let Some(vars) = enums.get(name) {
                     return vars.iter().all(|v| {
-                        v.payload
-                            .as_ref()
-                            .map(|t| is_copy(t, structs, enums))
-                            .unwrap_or(true)
+                        v.payloads.iter().all(|t| is_copy(t, structs, enums))
                     });
                 }
                 false
@@ -538,21 +535,30 @@ fn check_expr(
                                 ));
                                 return None;
                             };
-                            if let Some(payload_ty) = &var.payload {
-                                let Some(bind) = pat.get(3).and_then(|x| x.as_str()) else {
+                            let binds = &pat[3..];
+                            if binds.len() != var.payloads.len() {
+                                diags.push(err(
+                                    "type.match",
+                                    format!(
+                                        "variant `{vname}` expects {} payload bind(s), got {}",
+                                        var.payloads.len(),
+                                        binds.len()
+                                    ),
+                                ));
+                                return None;
+                            }
+                            for (i, bind_v) in binds.iter().enumerate() {
+                                let Some(bind) = bind_v.as_str() else {
                                     diags.push(err(
                                         "type.match",
-                                        format!("variant `{vname}` needs payload bind"),
+                                        "variant payload binds must be names",
                                     ));
                                     return None;
                                 };
-                                child.insert(bind.to_string(), slot_new(payload_ty.clone()));
-                            } else if pat.len() >= 4 {
-                                diags.push(err(
-                                    "type.match",
-                                    format!("unit variant `{vname}` has no payload bind"),
-                                ));
-                                return None;
+                                child.insert(
+                                    bind.to_string(),
+                                    slot_new(var.payloads[i].clone()),
+                                );
                             }
                         }
                     }
@@ -694,32 +700,26 @@ fn check_expr(
                 ));
                 return None;
             };
-            match &var.payload {
-                None => {
-                    if rest.len() != 2 {
-                        diags.push(err(
-                            "type.enum",
-                            format!("unit variant `{vname}` takes no payload"),
-                        ));
-                        return None;
-                    }
-                }
-                Some(pty) => {
-                    if rest.len() != 3 {
-                        diags.push(err(
-                            "type.enum",
-                            format!("variant `{vname}` needs one payload"),
-                        ));
-                        return None;
-                    }
-                    let got = check_expr(&rest[2], env, fns, structs, enums, break_ty, diags)?;
-                    if !ty_eq(pty, &got) {
-                        diags.push(err(
-                            "type.mismatch",
-                            format!("variant `{vname}` payload type mismatch"),
-                        ));
-                        return None;
-                    }
+            let args = &rest[2..];
+            if args.len() != var.payloads.len() {
+                diags.push(err(
+                    "type.enum",
+                    format!(
+                        "variant `{vname}` expects {} payload(s), got {}",
+                        var.payloads.len(),
+                        args.len()
+                    ),
+                ));
+                return None;
+            }
+            for (i, arg) in args.iter().enumerate() {
+                let got = check_expr(arg, env, fns, structs, enums, break_ty, diags)?;
+                if !ty_eq(&var.payloads[i], &got) {
+                    diags.push(err(
+                        "type.mismatch",
+                        format!("variant `{vname}` payload {i} type mismatch"),
+                    ));
+                    return None;
                 }
             }
             Some(serde_json::json!(["named", ename]))
