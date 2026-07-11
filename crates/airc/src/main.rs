@@ -6,6 +6,7 @@ use airc::{
 };
 use std::env;
 use std::fs;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 fn usage() -> &'static str {
@@ -20,10 +21,11 @@ Usage:
   airc unpack  <file.airb>         # print S-expr
   airc check   <file.air|.airb> [--diag=text|json]
   airc run     <file.air|.airb> [--diag=text|json]
-  airc compile <file.air|.airb> [--diag=text|json]  # Phase 2 Cranelift JIT (sum-class)
+  airc compile <file.air|.airb> [-o out.o|bin] [--diag=text|json]
 
 Default text encoding is .air (S-expr). .airb is accepted for check/run/fmt/hash/eq/compile.
 .air.json remains accepted for legacy parity.
+Compile: Cranelift JIT (sum-class); -o *.o writes an object, other -o paths link a hosted binary via cc.
 "
 }
 
@@ -31,18 +33,23 @@ struct Cli {
     cmd: String,
     files: Vec<String>,
     diag: String,
+    output: Option<PathBuf>,
 }
 
 fn parse_cli(args: &[String]) -> Result<Cli, String> {
     let mut cmd = String::new();
     let mut files = Vec::new();
     let mut diag = "text".to_string();
-    for a in args {
+    let mut output = None;
+    let mut i = 0;
+    while i < args.len() {
+        let a = &args[i];
         if a == "-h" || a == "--help" {
             return Ok(Cli {
                 cmd: "help".into(),
                 files,
                 diag,
+                output,
             });
         }
         if let Some(v) = a.strip_prefix("--diag=") {
@@ -50,15 +57,37 @@ fn parse_cli(args: &[String]) -> Result<Cli, String> {
                 return Err(format!("invalid --diag value: {v}"));
             }
             diag = v.to_string();
+            i += 1;
+            continue;
+        }
+        if a == "-o" || a == "--output" {
+            i += 1;
+            let Some(path) = args.get(i) else {
+                return Err("-o requires a path".into());
+            };
+            output = Some(PathBuf::from(path));
+            i += 1;
+            continue;
+        }
+        if let Some(path) = a.strip_prefix("--output=") {
+            output = Some(PathBuf::from(path));
+            i += 1;
             continue;
         }
         if cmd.is_empty() {
             cmd = a.clone();
+            i += 1;
             continue;
         }
         files.push(a.clone());
+        i += 1;
     }
-    Ok(Cli { cmd, files, diag })
+    Ok(Cli {
+        cmd,
+        files,
+        diag,
+        output,
+    })
 }
 
 fn load_module(path: &str, diag: &str) -> Result<airc::Module, ExitCode> {
@@ -93,6 +122,12 @@ fn main() -> ExitCode {
     if cli.cmd == "version" {
         println!("airc {} (rust)", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
+    }
+
+    if cli.output.is_some() && cli.cmd != "compile" {
+        eprintln!("`-o` is only valid for `compile`");
+        eprint!("{}", usage());
+        return ExitCode::from(2);
     }
 
     match cli.cmd.as_str() {
@@ -200,12 +235,16 @@ fn main() -> ExitCode {
     }
 
     if cli.cmd == "compile" {
-        match compile_module(&module) {
+        match compile_module(&module, cli.output.as_deref()) {
             Ok(out) => {
-                match out.main {
-                    Some(v) => println!("ok: compiled module {} (jit main => {v})", module.name),
-                    None => println!("ok: compiled module {}", module.name),
+                let mut msg = match out.main {
+                    Some(v) => format!("ok: compiled module {} (jit main => {v})", module.name),
+                    None => format!("ok: compiled module {}", module.name),
+                };
+                if let Some(p) = &out.output {
+                    msg.push_str(&format!(" -> {}", p.display()));
                 }
+                println!("{msg}");
                 ExitCode::SUCCESS
             }
             Err(diags) => {

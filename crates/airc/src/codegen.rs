@@ -1,7 +1,8 @@
 //! Phase 2 Cranelift codegen — `sum`-class i32 / control-flow subset.
 //!
 //! See docs/CODEGEN.md. Interpreter (`airc run`) remains the general execution path;
-//! `airc compile` JIT-runs parameterless `main` when present.
+//! `airc compile` JIT-runs parameterless `main` when present, and can emit a `.o`
+//! or link a hosted binary via `-o`.
 
 use crate::diag::{err, tag, Diagnostic};
 use crate::parse::{fns_in_module, Module};
@@ -11,9 +12,12 @@ use cranelift_codegen::settings::{self, Configurable};
 use cranelift_codegen::verifier::verify_function;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{default_libcall_names, Linkage, Module as ClifModule};
+use cranelift_module::{default_libcall_names, FuncId, Linkage, Module as ClifModule};
+use cranelift_object::{ObjectBuilder, ObjectModule};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Arc;
 
 /// Result of a successful `compile` (native / JIT path).
@@ -21,6 +25,31 @@ use std::sync::Arc;
 pub struct CompileOutcome {
     /// Value returned by JIT-calling parameterless `main`, if the module defines one.
     pub main: Option<i32>,
+    /// Path written when `-o` was requested (object or linked binary).
+    pub output: Option<PathBuf>,
+}
+
+/// What `-o` should produce.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompileOutputKind {
+    /// Relocatable object (`.o`).
+    Object,
+    /// Hosted executable linked with the system C compiler (`cc`).
+    Executable,
+}
+
+impl CompileOutputKind {
+    pub fn infer(path: &Path) -> Self {
+        if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("o"))
+        {
+            CompileOutputKind::Object
+        } else {
+            CompileOutputKind::Executable
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,10 +83,13 @@ enum Lowered {
 }
 
 /// After a successful typecheck, lower supported functions to Cranelift IR,
-/// JIT-compile them, and call parameterless `main` when present.
-pub fn compile_module(module: &Module) -> Result<CompileOutcome, Vec<Diagnostic>> {
+/// JIT-compile them, call parameterless `main` when present, and optionally
+/// write an object file or hosted executable to `output`.
+pub fn compile_module(
+    module: &Module,
+    output: Option<&Path>,
+) -> Result<CompileOutcome, Vec<Diagnostic>> {
     let isa = host_isa()?;
-    let mut jit = JITModule::new(JITBuilder::with_isa(isa, default_libcall_names()));
     let fns = fns_in_module(module);
     if fns.is_empty() {
         return Err(vec![err(
@@ -66,11 +98,122 @@ pub fn compile_module(module: &Module) -> Result<CompileOutcome, Vec<Diagnostic>
         )]);
     }
 
+    // JIT path — prove machcode and obtain main's return value.
+    let mut jit = JITModule::new(JITBuilder::with_isa(isa.clone(), default_libcall_names()));
+    let main_id = lower_all_fns(&mut jit, &fns)?;
+    jit.finalize_definitions()
+        .map_err(|e| vec![err("codegen.error", format!("finalize: {e}"))])?;
+
+    let main = if let Some(id) = main_id {
+        let ptr = jit.get_finalized_function(id);
+        // SAFETY: signature is `() -> i32`, matching declare/define above; ptr is live
+        // for the lifetime of `jit`, which outlives this call.
+        let f: extern "C" fn() -> i32 = unsafe { std::mem::transmute(ptr) };
+        Some(f())
+    } else {
+        None
+    };
+
+    let written = if let Some(path) = output {
+        let bytes = emit_object_bytes(module, isa)?;
+        match CompileOutputKind::infer(path) {
+            CompileOutputKind::Object => {
+                std::fs::write(path, &bytes).map_err(|e| {
+                    vec![err(
+                        "codegen.error",
+                        format!("write {}: {e}", path.display()),
+                    )]
+                })?;
+            }
+            CompileOutputKind::Executable => {
+                link_hosted_executable(&bytes, path)?;
+            }
+        }
+        Some(path.to_path_buf())
+    } else {
+        None
+    };
+
+    Ok(CompileOutcome {
+        main,
+        output: written,
+    })
+}
+
+/// Emit a relocatable object for the module (same lowering as JIT).
+pub fn emit_object_bytes(
+    module: &Module,
+    isa: Arc<dyn cranelift_codegen::isa::TargetIsa>,
+) -> Result<Vec<u8>, Vec<Diagnostic>> {
+    let fns = fns_in_module(module);
+    if fns.is_empty() {
+        return Err(vec![err(
+            "codegen.unsupported",
+            "module has no functions to compile",
+        )]);
+    }
+    let builder = ObjectBuilder::new(isa, module.name.as_str(), default_libcall_names())
+        .map_err(|e| vec![err("codegen.error", format!("object builder: {e}"))])?;
+    let mut obj = ObjectModule::new(builder);
+    lower_all_fns(&mut obj, &fns)?;
+    let product = obj.finish();
+    product
+        .object
+        .write()
+        .map_err(|e| vec![err("codegen.error", format!("object write: {e}"))])
+}
+
+fn link_hosted_executable(object_bytes: &[u8], out: &Path) -> Result<(), Vec<Diagnostic>> {
+    let dir = std::env::temp_dir();
+    let obj_path = dir.join(format!(
+        "airc-{}-{}.o",
+        std::process::id(),
+        out.file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("out")
+    ));
+    std::fs::write(&obj_path, object_bytes).map_err(|e| {
+        vec![err(
+            "codegen.error",
+            format!("write temp object: {e}"),
+        )]
+    })?;
+
+    let status = Command::new("cc")
+        .arg("-o")
+        .arg(out)
+        .arg(&obj_path)
+        .status()
+        .map_err(|e| {
+            vec![err(
+                "codegen.error",
+                format!("spawn cc for link: {e}"),
+            )]
+        })?;
+
+    let _ = std::fs::remove_file(&obj_path);
+
+    if !status.success() {
+        return Err(vec![err(
+            "codegen.error",
+            format!(
+                "cc failed linking {} (is a C toolchain installed?)",
+                out.display()
+            ),
+        )]);
+    }
+    Ok(())
+}
+
+fn lower_all_fns(
+    clif: &mut impl ClifModule,
+    fns: &[&Value],
+) -> Result<Option<FuncId>, Vec<Diagnostic>> {
     let mut fb_ctx = FunctionBuilderContext::new();
-    let mut ctx = jit.make_context();
+    let mut ctx = clif.make_context();
     let mut main_id = None;
 
-    for f in &fns {
+    for f in fns {
         let arr = f.as_array().unwrap();
         let name = arr[1].as_str().unwrap();
         let params = arr[2].as_array().unwrap();
@@ -82,7 +225,7 @@ pub fn compile_module(module: &Module) -> Result<CompileOutcome, Vec<Diagnostic>
             )]);
         }
 
-        let mut sig = jit.make_signature();
+        let mut sig = clif.make_signature();
         for p in params {
             let pa = p.as_array().ok_or_else(|| {
                 vec![err(
@@ -101,7 +244,7 @@ pub fn compile_module(module: &Module) -> Result<CompileOutcome, Vec<Diagnostic>
         }
         sig.returns.push(AbiParam::new(types::I32));
 
-        let id = jit
+        let id = clif
             .declare_function(name, Linkage::Export, &sig)
             .map_err(|e| vec![err("codegen.error", format!("declare `{name}`: {e}"))])?;
         if name == "main" && params.is_empty() {
@@ -112,32 +255,19 @@ pub fn compile_module(module: &Module) -> Result<CompileOutcome, Vec<Diagnostic>
         ctx.func.name = UserFuncName::user(0, id.as_u32());
         lower_fn_body(&mut ctx.func, &mut fb_ctx, name, params, &arr[4])?;
 
-        verify_function(&ctx.func, jit.isa()).map_err(|e| {
+        verify_function(&ctx.func, clif.isa()).map_err(|e| {
             vec![err(
                 "codegen.error",
                 format!("verify `{name}`: {e}"),
             )]
         })?;
 
-        jit.define_function(id, &mut ctx)
+        clif.define_function(id, &mut ctx)
             .map_err(|e| vec![err("codegen.error", format!("define `{name}`: {e}"))])?;
-        jit.clear_context(&mut ctx);
+        clif.clear_context(&mut ctx);
     }
 
-    jit.finalize_definitions()
-        .map_err(|e| vec![err("codegen.error", format!("finalize: {e}"))])?;
-
-    let main = if let Some(id) = main_id {
-        let ptr = jit.get_finalized_function(id);
-        // SAFETY: signature is `() -> i32`, matching declare/define above; ptr is live
-        // for the lifetime of `jit`, which outlives this call.
-        let f: extern "C" fn() -> i32 = unsafe { std::mem::transmute(ptr) };
-        Some(f())
-    } else {
-        None
-    };
-
-    Ok(CompileOutcome { main })
+    Ok(main_id)
 }
 
 fn host_isa() -> Result<Arc<dyn cranelift_codegen::isa::TargetIsa>, Vec<Diagnostic>> {
@@ -553,16 +683,48 @@ mod tests {
     use super::*;
     use crate::check::typecheck_module;
     use crate::parse_module_file;
+    use std::process::Command;
 
-    #[test]
-    fn compile_sum_with_cranelift() {
+    fn load_sum() -> Module {
         let text = std::fs::read_to_string("examples/sum.air")
             .or_else(|_| std::fs::read_to_string("../../examples/sum.air"))
             .expect("sum.air");
         let module = parse_module_file("examples/sum.air", &text).expect("parse");
         typecheck_module(&module).expect("check");
-        let out = compile_module(&module).expect("compile");
+        module
+    }
+
+    #[test]
+    fn compile_sum_with_cranelift() {
+        let module = load_sum();
+        let out = compile_module(&module, None).expect("compile");
         assert_eq!(out.main, Some(55));
+        assert!(out.output.is_none());
+    }
+
+    #[test]
+    fn compile_sum_emits_object() {
+        let module = load_sum();
+        let dir = std::env::temp_dir();
+        let obj = dir.join(format!("airc-sum-test-{}.o", std::process::id()));
+        let out = compile_module(&module, Some(&obj)).expect("compile");
+        assert_eq!(out.main, Some(55));
+        assert_eq!(out.output.as_deref(), Some(obj.as_path()));
+        let meta = std::fs::metadata(&obj).expect("object exists");
+        assert!(meta.len() > 0);
+        let _ = std::fs::remove_file(&obj);
+    }
+
+    #[test]
+    fn compile_sum_links_hosted_binary() {
+        let module = load_sum();
+        let dir = std::env::temp_dir();
+        let bin = dir.join(format!("airc-sum-bin-{}", std::process::id()));
+        let out = compile_module(&module, Some(&bin)).expect("link");
+        assert_eq!(out.main, Some(55));
+        let status = Command::new(&bin).status().expect("run binary");
+        assert_eq!(status.code(), Some(55));
+        let _ = std::fs::remove_file(&bin);
     }
 
     #[test]
@@ -572,7 +734,7 @@ mod tests {
             .expect("hello.air");
         let module = parse_module_file("examples/hello.air", &text).expect("parse");
         typecheck_module(&module).expect("check");
-        let err = compile_module(&module).expect_err("cap.print unsupported");
+        let err = compile_module(&module, None).expect_err("cap.print unsupported");
         assert!(
             err.iter().any(|d| d.code == "codegen.unsupported"),
             "{err:?}"

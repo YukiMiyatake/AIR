@@ -34,6 +34,13 @@ jobs:
           out=$(cargo run -q -p airc -- run examples/hello.air)
           printf '%s\n' "$out" | head -n1 | grep -qx 'hello'
           cargo run -q -p airc -- compile examples/sum.air | grep -F 'jit main => 55'
+          cargo run -q -p airc -- compile examples/sum.air -o /tmp/airc-sum-ci
+          set +e
+          /tmp/airc-sum-ci
+          code=$?
+          set -e
+          test "$code" -eq 55
+          rm -f /tmp/airc-sum-ci
 
       - uses: actions/setup-node@v4
         with:
