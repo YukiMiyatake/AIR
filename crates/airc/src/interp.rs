@@ -299,6 +299,18 @@ fn eval2(
             Ok(AirValue::Array(elems))
         }
         "as" => eval2(&rest[1], env, fns),
+        "borrow" => {
+            if rest.len() < 2 {
+                return Err(EvalErr::Msg("runtime.borrow".into()));
+            }
+            eval2(&rest[1], env, fns)
+        }
+        "move" => {
+            if rest.is_empty() {
+                return Err(EvalErr::Msg("runtime.move".into()));
+            }
+            eval2(&rest[0], env, fns)
+        }
         "cap" => {
             if rest[0].as_str() == Some("print") {
                 let v = eval2(&rest[1], env, fns)?;

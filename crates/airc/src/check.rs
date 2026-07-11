@@ -7,9 +7,85 @@ use std::collections::HashMap;
 struct Slot {
     ty: Value,
     moved: bool,
+    shared: u32,
+    mut_borrowed: bool,
 }
 
 type Env = HashMap<String, Slot>;
+
+fn slot_new(ty: Value) -> Slot {
+    Slot {
+        ty,
+        moved: false,
+        shared: 0,
+        mut_borrowed: false,
+    }
+}
+
+fn is_borrowed(s: &Slot) -> bool {
+    s.shared > 0 || s.mut_borrowed
+}
+
+fn acquire_borrow(env: &mut Env, name: &str, kind: &str, diags: &mut Vec<Diagnostic>) -> bool {
+    let Some(slot) = env.get_mut(name) else {
+        diags.push(err("type.unbound", format!("unknown variable {name}")));
+        return false;
+    };
+    if slot.moved {
+        diags.push(err(
+            "mem.use_after_move",
+            format!("borrow of moved local `{name}`"),
+        ));
+        return false;
+    }
+    if kind == "mut" {
+        if is_borrowed(slot) {
+            diags.push(err(
+                "mem.borrow_conflict",
+                format!("mut borrow conflicts on `{name}`"),
+            ));
+            return false;
+        }
+        slot.mut_borrowed = true;
+    } else if kind == "shared" {
+        if slot.mut_borrowed {
+            diags.push(err(
+                "mem.borrow_conflict",
+                format!("shared borrow conflicts with mut on `{name}`"),
+            ));
+            return false;
+        }
+        slot.shared += 1;
+    } else {
+        diags.push(err("type.borrow", format!("bad borrow kind {kind}")));
+        return false;
+    }
+    true
+}
+
+fn release_borrow(env: &mut Env, name: &str, kind: &str) {
+    let Some(slot) = env.get_mut(name) else {
+        return;
+    };
+    if kind == "mut" {
+        slot.mut_borrowed = false;
+    } else if slot.shared > 0 {
+        slot.shared -= 1;
+    }
+}
+
+fn direct_borrow_of(e: &Value) -> Option<(String, String)> {
+    let (t, rest) = tag(e)?;
+    if t != "borrow" || rest.len() < 2 {
+        return None;
+    }
+    let kind = rest[0].as_str()?.to_string();
+    let (pt, prest) = tag(&rest[1])?;
+    if pt != "var" {
+        return None;
+    }
+    Some((prest[0].as_str()?.to_string(), kind))
+}
 
 pub fn typecheck_module(module: &Module) -> Result<(), Vec<Diagnostic>> {
     let main = find_fn(module, "main").ok_or_else(|| vec![err("type.main", "missing main")])?;
@@ -28,10 +104,7 @@ pub fn typecheck_module(module: &Module) -> Result<(), Vec<Diagnostic>> {
             let pa = p.as_array().unwrap();
             env.insert(
                 pa[0].as_str().unwrap().to_string(),
-                Slot {
-                    ty: pa[1].clone(),
-                    moved: false,
-                },
+                slot_new(pa[1].clone()),
             );
         }
         let mut break_ty: Option<Value> = None;
@@ -86,6 +159,12 @@ fn merge_moved(dst: &mut Env, a: &Env, b: &Env) {
         let ma = a.get(name).map(|s| s.moved).unwrap_or(slot.moved);
         let mb = b.get(name).map(|s| s.moved).unwrap_or(slot.moved);
         slot.moved = ma || mb;
+        let sa = a.get(name).map(|s| s.shared).unwrap_or(slot.shared);
+        let sb = b.get(name).map(|s| s.shared).unwrap_or(slot.shared);
+        slot.shared = sa.max(sb);
+        let mua = a.get(name).map(|s| s.mut_borrowed).unwrap_or(slot.mut_borrowed);
+        let mub = b.get(name).map(|s| s.mut_borrowed).unwrap_or(slot.mut_borrowed);
+        slot.mut_borrowed = mua || mub;
     }
 }
 
@@ -129,6 +208,13 @@ fn check_expr(
             }
             let ty = slot.ty.clone();
             if !is_copy(&ty) {
+                if is_borrowed(slot) {
+                    diags.push(err(
+                        "mem.borrow_conflict",
+                        format!("move of borrowed local `{name}`"),
+                    ));
+                    return None;
+                }
                 slot.moved = true;
             }
             Some(ty)
@@ -146,6 +232,7 @@ fn check_expr(
                 return None;
             }
             let mut child = env.clone();
+            let mut held: Vec<(String, String)> = Vec::new();
             for b in rest[0].as_array()? {
                 let ba = b.as_array()?;
                 let name = ba[0].as_str()?.to_string();
@@ -154,37 +241,40 @@ fn check_expr(
                 } else {
                     (Some(&ba[1]), &ba[2])
                 };
+                if let Some((place, kind)) = direct_borrow_of(init) {
+                    held.push((place, kind));
+                }
                 let it = check_expr(init, &mut child, fns, break_ty, diags)?;
                 if let Some(anno) = ty_anno {
                     if !ty_eq(anno, &it) {
                         diags.push(err("type.mismatch", format!("let {name} type mismatch")));
                         return None;
                     }
-                    child.insert(
-                        name,
-                        Slot {
-                            ty: anno.clone(),
-                            moved: false,
-                        },
-                    );
+                    child.insert(name, slot_new(anno.clone()));
                 } else {
-                    child.insert(
-                        name,
-                        Slot {
-                            ty: it,
-                            moved: false,
-                        },
-                    );
+                    child.insert(name, slot_new(it));
                 }
             }
-            check_expr(&rest[1], &mut child, fns, break_ty, diags)
+            let out = check_expr(&rest[1], &mut child, fns, break_ty, diags);
+            for (place, kind) in held {
+                release_borrow(&mut child, &place, &kind);
+            }
+            out
         }
         "set!" => {
             let name = rest[0].as_str()?;
-            let Some(slot_ty) = env.get(name).map(|s| s.ty.clone()) else {
+            let Some(slot) = env.get(name) else {
                 diags.push(err("type.unbound", format!("set! unknown {name}")));
                 return None;
             };
+            if is_borrowed(slot) {
+                diags.push(err(
+                    "mem.borrow_conflict",
+                    format!("set! of borrowed local `{name}`"),
+                ));
+                return None;
+            }
+            let slot_ty = slot.ty.clone();
             let it = check_expr(&rest[1], env, fns, break_ty, diags)?;
             if !ty_eq(&slot_ty, &it) {
                 diags.push(err(
@@ -360,13 +450,7 @@ fn check_expr(
                         if let (Some("ok"), Some(name)) = (pat[0].as_str(), pat[1].as_str()) {
                             if let Some(scr_arr) = scr.as_array() {
                                 if scr_arr.first().and_then(|x| x.as_str()) == Some("result") {
-                                    child.insert(
-                                        name.to_string(),
-                                        Slot {
-                                            ty: scr_arr[1].clone(),
-                                            moved: false,
-                                        },
-                                    );
+                                    child.insert(name.to_string(), slot_new(scr_arr[1].clone()));
                                 }
                             }
                         } else if let (Some("err"), Some(name)) =
@@ -374,13 +458,7 @@ fn check_expr(
                         {
                             if let Some(scr_arr) = scr.as_array() {
                                 if scr_arr.first().and_then(|x| x.as_str()) == Some("result") {
-                                    child.insert(
-                                        name.to_string(),
-                                        Slot {
-                                            ty: scr_arr[2].clone(),
-                                            moved: false,
-                                        },
-                                    );
+                                    child.insert(name.to_string(), slot_new(scr_arr[2].clone()));
                                 }
                             }
                         }
@@ -430,12 +508,71 @@ fn check_expr(
             }
             Some(Value::String("i32".into()))
         }
-        "borrow" | "move" => {
+        "borrow" => {
             if rest.len() < 2 {
-                diags.push(err("type.unsupported", format!("bad {t}")));
+                diags.push(err("type.borrow", "bad borrow"));
                 return None;
             }
-            check_expr(&rest[1], env, fns, break_ty, diags)
+            let kind = rest[0].as_str()?;
+            let place = &rest[1];
+            let Some((pt, prest)) = tag(place) else {
+                diags.push(err("type.borrow", "borrow place must be tagged"));
+                return None;
+            };
+            if pt != "var" {
+                diags.push(err(
+                    "type.borrow",
+                    "v0 borrow place must be [\"var\", name]",
+                ));
+                return None;
+            }
+            let name = prest[0].as_str()?;
+            let Some(slot) = env.get(name) else {
+                diags.push(err("type.unbound", format!("unknown variable {name}")));
+                return None;
+            };
+            let inner_ty = slot.ty.clone();
+            if !acquire_borrow(env, name, kind, diags) {
+                return None;
+            }
+            Some(serde_json::json!(["ref", kind, inner_ty]))
+        }
+        "move" => {
+            if rest.is_empty() {
+                diags.push(err("type.move", "bad move"));
+                return None;
+            }
+            let place = &rest[0];
+            let Some((pt, prest)) = tag(place) else {
+                diags.push(err("type.move", "move place must be tagged"));
+                return None;
+            };
+            if pt != "var" {
+                diags.push(err("type.move", "v0 move place must be [\"var\", name]"));
+                return None;
+            }
+            let name = prest[0].as_str()?;
+            let Some(slot) = env.get_mut(name) else {
+                diags.push(err("type.unbound", format!("unknown variable {name}")));
+                return None;
+            };
+            if slot.moved {
+                diags.push(err(
+                    "mem.use_after_move",
+                    format!("use of moved local `{name}`"),
+                ));
+                return None;
+            }
+            if is_borrowed(slot) {
+                diags.push(err(
+                    "mem.borrow_conflict",
+                    format!("move of borrowed local `{name}`"),
+                ));
+                return None;
+            }
+            let ty = slot.ty.clone();
+            slot.moved = true;
+            Some(ty)
         }
         other => {
             diags.push(err("type.unsupported", format!("unsupported expr {other}")));
