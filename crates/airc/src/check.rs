@@ -1,5 +1,5 @@
 use crate::diag::{err, tag, Diagnostic};
-use crate::parse::{collect_struct_defs, find_fn, Module, StructFields};
+use crate::parse::{collect_enum_defs, collect_struct_defs, find_fn, Module, EnumVariants, StructFields};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -13,6 +13,7 @@ struct Slot {
 
 type Env = HashMap<String, Slot>;
 type StructDefs = HashMap<String, StructFields>;
+type EnumDefs = HashMap<String, EnumVariants>;
 
 fn slot_new(ty: Value) -> Slot {
     Slot {
@@ -91,6 +92,15 @@ fn direct_borrow_of(e: &Value) -> Option<(String, String)> {
 pub fn typecheck_module(module: &Module) -> Result<(), Vec<Diagnostic>> {
     let main = find_fn(module, "main").ok_or_else(|| vec![err("type.main", "missing main")])?;
     let structs = collect_struct_defs(module)?;
+    let enums = collect_enum_defs(module)?;
+    for name in structs.keys() {
+        if enums.contains_key(name) {
+            return Err(vec![err(
+                "parse.duplicate",
+                format!("struct and enum both named `{name}`"),
+            )]);
+        }
+    }
     let mut diags = Vec::new();
     let mut fns = HashMap::new();
     for f in crate::parse::fns_in_module(module) {
@@ -110,7 +120,7 @@ pub fn typecheck_module(module: &Module) -> Result<(), Vec<Diagnostic>> {
             );
         }
         let mut break_ty: Option<Value> = None;
-        match check_expr(body, &mut env, &fns, &structs, &mut break_ty, &mut diags) {
+        match check_expr(body, &mut env, &fns, &structs, &enums, &mut break_ty, &mut diags) {
             Some(body_ty) => {
                 if body_ty != Value::String("never".into()) && &body_ty != ret {
                     diags.push(err(
@@ -141,22 +151,30 @@ fn is_int_ty(t: &Value) -> bool {
     )
 }
 
-fn is_copy(t: &Value, structs: &StructDefs) -> bool {
+fn is_copy(t: &Value, structs: &StructDefs, enums: &EnumDefs) -> bool {
     if let Some(s) = t.as_str() {
         return s != "never";
     }
     if let Some(arr) = t.as_array() {
         match arr.first().and_then(|x| x.as_str()) {
             Some("ref") if arr.get(1).and_then(|x| x.as_str()) == Some("shared") => true,
-            Some("array") if arr.len() >= 2 => is_copy(&arr[1], structs),
+            Some("array") if arr.len() >= 2 => is_copy(&arr[1], structs, enums),
             Some("named") if arr.len() >= 2 => {
                 let Some(name) = arr[1].as_str() else {
                     return false;
                 };
-                let Some(fields) = structs.get(name) else {
-                    return false;
-                };
-                fields.iter().all(|(_, ft)| is_copy(ft, structs))
+                if let Some(fields) = structs.get(name) {
+                    return fields.iter().all(|(_, ft)| is_copy(ft, structs, enums));
+                }
+                if let Some(vars) = enums.get(name) {
+                    return vars.iter().all(|v| {
+                        v.payload
+                            .as_ref()
+                            .map(|t| is_copy(t, structs, enums))
+                            .unwrap_or(true)
+                    });
+                }
+                false
             }
             _ => false,
         }
@@ -184,6 +202,7 @@ fn check_expr(
     env: &mut Env,
     fns: &HashMap<String, &Value>,
     structs: &StructDefs,
+    enums: &EnumDefs,
     break_ty: &mut Option<Value>,
     diags: &mut Vec<Diagnostic>,
 ) -> Option<Value> {
@@ -219,7 +238,7 @@ fn check_expr(
                 return None;
             }
             let ty = slot.ty.clone();
-            if !is_copy(&ty, structs) {
+            if !is_copy(&ty, structs, enums) {
                 if is_borrowed(slot) {
                     diags.push(err(
                         "mem.borrow_conflict",
@@ -234,7 +253,7 @@ fn check_expr(
         "seq" => {
             let mut last = Value::String("i32".into());
             for x in rest {
-                last = check_expr(x, env, fns, structs, break_ty, diags)?;
+                last = check_expr(x, env, fns, structs, enums, break_ty, diags)?;
             }
             Some(last)
         }
@@ -256,7 +275,7 @@ fn check_expr(
                 if let Some((place, kind)) = direct_borrow_of(init) {
                     held.push((place, kind));
                 }
-                let it = check_expr(init, &mut child, fns, structs, break_ty, diags)?;
+                let it = check_expr(init, &mut child, fns, structs, enums, break_ty, diags)?;
                 if let Some(anno) = ty_anno {
                     if !ty_eq(anno, &it) {
                         diags.push(err("type.mismatch", format!("let {name} type mismatch")));
@@ -267,7 +286,7 @@ fn check_expr(
                     child.insert(name, slot_new(it));
                 }
             }
-            let out = check_expr(&rest[1], &mut child, fns, structs, break_ty, diags);
+            let out = check_expr(&rest[1], &mut child, fns, structs, enums, break_ty, diags);
             for (place, kind) in held {
                 release_borrow(&mut child, &place, &kind);
             }
@@ -287,7 +306,7 @@ fn check_expr(
                 return None;
             }
             let slot_ty = slot.ty.clone();
-            let it = check_expr(&rest[1], env, fns, structs, break_ty, diags)?;
+            let it = check_expr(&rest[1], env, fns, structs, enums, break_ty, diags)?;
             if !ty_eq(&slot_ty, &it) {
                 diags.push(err(
                     "mem.type_mismatch",
@@ -305,15 +324,15 @@ fn check_expr(
                 diags.push(err("type.if", "bad if"));
                 return None;
             }
-            let c = check_expr(&rest[0], env, fns, structs, break_ty, diags)?;
+            let c = check_expr(&rest[0], env, fns, structs, enums, break_ty, diags)?;
             if c != Value::String("bool".into()) {
                 diags.push(err("type.mismatch", "if cond must be bool"));
                 return None;
             }
             let mut env_then = env.clone();
-            let th = check_expr(&rest[1], &mut env_then, fns, structs, break_ty, diags)?;
+            let th = check_expr(&rest[1], &mut env_then, fns, structs, enums, break_ty, diags)?;
             let mut env_else = env.clone();
-            let el = check_expr(&rest[2], &mut env_else, fns, structs, break_ty, diags)?;
+            let el = check_expr(&rest[2], &mut env_else, fns, structs, enums, break_ty, diags)?;
             merge_moved(env, &env_then, &env_else);
             if th == Value::String("never".into()) {
                 return Some(el);
@@ -329,7 +348,7 @@ fn check_expr(
         }
         "loop" => {
             let mut inner: Option<Value> = None;
-            check_expr(&rest[0], env, fns, structs, &mut inner, diags)?;
+            check_expr(&rest[0], env, fns, structs, enums, &mut inner, diags)?;
             match inner {
                 Some(ty) => Some(ty),
                 None => {
@@ -339,7 +358,7 @@ fn check_expr(
             }
         }
         "break" => {
-            let ty = check_expr(&rest[0], env, fns, structs, break_ty, diags)?;
+            let ty = check_expr(&rest[0], env, fns, structs, enums, break_ty, diags)?;
             if let Some(prev) = break_ty {
                 if !ty_eq(prev, &ty) {
                     diags.push(err("type.mismatch", "break types disagree"));
@@ -349,12 +368,12 @@ fn check_expr(
             *break_ty = Some(ty);
             Some(Value::String("never".into()))
         }
-        "return" => check_expr(&rest[0], env, fns, structs, break_ty, diags),
+        "return" => check_expr(&rest[0], env, fns, structs, enums, break_ty, diags),
         "call" => {
             let callee = rest[0].as_str()?;
             let mut arg_tys = Vec::new();
             for a in &rest[1..] {
-                arg_tys.push(check_expr(a, env, fns, structs, break_ty, diags)?);
+                arg_tys.push(check_expr(a, env, fns, structs, enums, break_ty, diags)?);
             }
             match callee {
                 "+" | "-" | "*" | "/" | "%" => {
@@ -447,9 +466,26 @@ fn check_expr(
                 diags.push(err("type.match", "bad match"));
                 return None;
             }
-            let scr = check_expr(&rest[0], env, fns, structs, break_ty, diags)?;
+            let scr = check_expr(&rest[0], env, fns, structs, enums, break_ty, diags)?;
             let mut out: Option<Value> = None;
             let mut arm_envs: Vec<Env> = Vec::new();
+            let mut covered: Vec<String> = Vec::new();
+            let mut has_wildcard = false;
+            let mut is_result = false;
+            let mut enum_name: Option<String> = None;
+            if let Some(arr) = scr.as_array() {
+                match arr.first().and_then(|x| x.as_str()) {
+                    Some("result") => is_result = true,
+                    Some("named") if arr.len() >= 2 => {
+                        if let Some(n) = arr[1].as_str() {
+                            if enums.contains_key(n) {
+                                enum_name = Some(n.to_string());
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
             for arm in &rest[1..] {
                 let aa = arm.as_array()?;
                 if aa.len() != 2 {
@@ -457,9 +493,12 @@ fn check_expr(
                     return None;
                 }
                 let mut child = env.clone();
-                if let Some(pat) = aa[0].as_array() {
+                if aa[0].as_str() == Some("_") {
+                    has_wildcard = true;
+                } else if let Some(pat) = aa[0].as_array() {
                     if pat.len() >= 2 {
                         if let (Some("ok"), Some(name)) = (pat[0].as_str(), pat[1].as_str()) {
+                            covered.push("ok".into());
                             if let Some(scr_arr) = scr.as_array() {
                                 if scr_arr.first().and_then(|x| x.as_str()) == Some("result") {
                                     child.insert(name.to_string(), slot_new(scr_arr[1].clone()));
@@ -468,15 +507,57 @@ fn check_expr(
                         } else if let (Some("err"), Some(name)) =
                             (pat[0].as_str(), pat[1].as_str())
                         {
+                            covered.push("err".into());
                             if let Some(scr_arr) = scr.as_array() {
                                 if scr_arr.first().and_then(|x| x.as_str()) == Some("result") {
                                     child.insert(name.to_string(), slot_new(scr_arr[2].clone()));
                                 }
                             }
+                        } else if pat[0].as_str() == Some("variant") && pat.len() >= 3 {
+                            let ename = pat[1].as_str()?;
+                            let vname = pat[2].as_str()?;
+                            covered.push(vname.to_string());
+                            if enum_name.as_deref() != Some(ename) {
+                                diags.push(err(
+                                    "type.match",
+                                    format!("variant pattern enum `{ename}` != scrutinee"),
+                                ));
+                                return None;
+                            }
+                            let Some(vars) = enums.get(ename) else {
+                                diags.push(err(
+                                    "type.unbound",
+                                    format!("unknown enum `{ename}`"),
+                                ));
+                                return None;
+                            };
+                            let Some(var) = vars.iter().find(|v| v.name == vname) else {
+                                diags.push(err(
+                                    "type.match",
+                                    format!("unknown variant `{vname}` on `{ename}`"),
+                                ));
+                                return None;
+                            };
+                            if let Some(payload_ty) = &var.payload {
+                                let Some(bind) = pat.get(3).and_then(|x| x.as_str()) else {
+                                    diags.push(err(
+                                        "type.match",
+                                        format!("variant `{vname}` needs payload bind"),
+                                    ));
+                                    return None;
+                                };
+                                child.insert(bind.to_string(), slot_new(payload_ty.clone()));
+                            } else if pat.len() >= 4 {
+                                diags.push(err(
+                                    "type.match",
+                                    format!("unit variant `{vname}` has no payload bind"),
+                                ));
+                                return None;
+                            }
                         }
                     }
                 }
-                let bt = check_expr(&aa[1], &mut child, fns, structs, break_ty, diags)?;
+                let bt = check_expr(&aa[1], &mut child, fns, structs, enums, break_ty, diags)?;
                 arm_envs.push(child);
                 if let Some(prev) = &out {
                     if !ty_eq(prev, &bt) {
@@ -485,6 +566,26 @@ fn check_expr(
                     }
                 }
                 out = Some(bt);
+            }
+            if is_result && !has_wildcard {
+                if !(covered.iter().any(|c| c == "ok") && covered.iter().any(|c| c == "err")) {
+                    diags.push(err("type.match", "Result match not exhaustive"));
+                    return None;
+                }
+            }
+            if let Some(ename) = &enum_name {
+                if !has_wildcard {
+                    let vars = enums.get(ename).unwrap();
+                    for v in vars {
+                        if !covered.iter().any(|c| c == &v.name) {
+                            diags.push(err(
+                                "type.match",
+                                format!("enum `{ename}` match not exhaustive (missing `{}`)", v.name),
+                            ));
+                            return None;
+                        }
+                    }
+                }
             }
             if let (Some(a), Some(b)) = (arm_envs.first(), arm_envs.get(1)) {
                 merge_moved(env, a, b);
@@ -502,7 +603,7 @@ fn check_expr(
             }
             let elem_ty = &rest[0];
             for el in &rest[1..] {
-                let t = check_expr(el, env, fns, structs, break_ty, diags)?;
+                let t = check_expr(el, env, fns, structs, enums, break_ty, diags)?;
                 if !ty_eq(&t, elem_ty) {
                     diags.push(err("type.mismatch", "array_lit element type mismatch"));
                     return None;
@@ -552,7 +653,7 @@ fn check_expr(
                     ));
                     return None;
                 };
-                let got = check_expr(&pa[1], env, fns, structs, break_ty, diags)?;
+                let got = check_expr(&pa[1], env, fns, structs, enums, break_ty, diags)?;
                 if !ty_eq(expected, &got) {
                     diags.push(err(
                         "type.mismatch",
@@ -572,12 +673,63 @@ fn check_expr(
             }
             Some(serde_json::json!(["named", ty_name]))
         }
+        "variant_lit" => {
+            if rest.len() < 2 || !rest[0].is_string() || !rest[1].is_string() {
+                diags.push(err(
+                    "type.enum",
+                    "variant_lit must be [variant_lit, enum, variant, payload?]",
+                ));
+                return None;
+            }
+            let ename = rest[0].as_str()?;
+            let vname = rest[1].as_str()?;
+            let Some(vars) = enums.get(ename) else {
+                diags.push(err("type.unbound", format!("unknown enum `{ename}`")));
+                return None;
+            };
+            let Some(var) = vars.iter().find(|v| v.name == vname) else {
+                diags.push(err(
+                    "type.enum",
+                    format!("unknown variant `{vname}` on `{ename}`"),
+                ));
+                return None;
+            };
+            match &var.payload {
+                None => {
+                    if rest.len() != 2 {
+                        diags.push(err(
+                            "type.enum",
+                            format!("unit variant `{vname}` takes no payload"),
+                        ));
+                        return None;
+                    }
+                }
+                Some(pty) => {
+                    if rest.len() != 3 {
+                        diags.push(err(
+                            "type.enum",
+                            format!("variant `{vname}` needs one payload"),
+                        ));
+                        return None;
+                    }
+                    let got = check_expr(&rest[2], env, fns, structs, enums, break_ty, diags)?;
+                    if !ty_eq(pty, &got) {
+                        diags.push(err(
+                            "type.mismatch",
+                            format!("variant `{vname}` payload type mismatch"),
+                        ));
+                        return None;
+                    }
+                }
+            }
+            Some(serde_json::json!(["named", ename]))
+        }
         "field" => {
             if rest.len() != 2 || !rest[1].is_string() {
                 diags.push(err("type.field", "field must be [field, place, name]"));
                 return None;
             }
-            let place_ty = check_expr(&rest[0], env, fns, structs, break_ty, diags)?;
+            let place_ty = check_expr(&rest[0], env, fns, structs, enums, break_ty, diags)?;
             let fname = rest[1].as_str()?;
             let Some(arr) = place_ty.as_array() else {
                 diags.push(err("type.field", "field of non-struct"));
@@ -605,12 +757,12 @@ fn check_expr(
             Some(fty.clone())
         }
         "as" => {
-            check_expr(&rest[1], env, fns, structs, break_ty, diags)?;
+            check_expr(&rest[1], env, fns, structs, enums, break_ty, diags)?;
             Some(rest[0].clone())
         }
         "cap" => {
             for a in &rest[1..] {
-                check_expr(a, env, fns, structs, break_ty, diags)?;
+                check_expr(a, env, fns, structs, enums, break_ty, diags)?;
             }
             Some(Value::String("i32".into()))
         }

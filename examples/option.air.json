@@ -1,0 +1,7 @@
+["mod", "option",
+  ["enum", "Opt", ["None"], ["Some", "i32"]],
+  ["fn", "main", [], "i32",
+    ["match",
+      ["variant_lit", "Opt", "Some", ["lit", "i32", "42"]],
+      [["variant", "Opt", "Some", "v"], ["var", "v"]],
+      [["variant", "Opt", "None"], ["lit", "i32", "-1"]]]]]

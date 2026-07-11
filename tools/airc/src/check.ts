@@ -20,14 +20,25 @@ function isFloatTy(t: Ty): boolean {
   return t === "f32" || t === "f64";
 }
 
-function isCopy(t: Ty, structs: Map<string, [string, Ty][]>): boolean {
+type EnumVar = { name: string; payload: Ty | null };
+type EnumDefs = Map<string, EnumVar[]>;
+
+function isCopy(
+  t: Ty,
+  structs: Map<string, [string, Ty][]>,
+  enums: EnumDefs,
+): boolean {
   if (typeof t === "string") return t !== "never";
   if (t[0] === "ref" && t[1] === "shared") return true;
-  if (t[0] === "array") return isCopy(t[1], structs);
+  if (t[0] === "array") return isCopy(t[1], structs, enums);
   if (t[0] === "named") {
     const fields = structs.get(t[1]);
-    if (!fields) return false;
-    return fields.every(([, ft]) => isCopy(ft, structs));
+    if (fields) return fields.every(([, ft]) => isCopy(ft, structs, enums));
+    const vars = enums.get(t[1]);
+    if (vars) {
+      return vars.every((v) => (v.payload ? isCopy(v.payload, structs, enums) : true));
+    }
+    return false;
   }
   return false;
 }
@@ -128,6 +139,7 @@ function checkExpr(
   diags: Diagnostic[],
   fns: Map<string, FnItem>,
   structs: Map<string, [string, Ty][]>,
+  enums: EnumDefs,
   breakTy: { current: Ty | null },
 ): Ty | null {
   if (typeof e === "boolean") return "bool";
@@ -151,7 +163,7 @@ function checkExpr(
         diags.push(err(`use of moved local \`${e[1]}\``, "mem.use_after_move"));
         return null;
       }
-      if (!isCopy(slot.ty, structs)) {
+      if (!isCopy(slot.ty, structs, enums)) {
         if (isBorrowed(slot)) {
           diags.push(err(`move of borrowed local \`${e[1]}\``, "mem.borrow_conflict"));
           return null;
@@ -163,7 +175,7 @@ function checkExpr(
     case "seq": {
       let last: Ty | null = null;
       for (let i = 1; i < e.length; i++) {
-        last = checkExpr(e[i] as Expr, env, diags, fns, structs, breakTy);
+        last = checkExpr(e[i] as Expr, env, diags, fns, structs, enums, breakTy);
         if (!last) return null;
       }
       return last ?? "i32";
@@ -174,7 +186,7 @@ function checkExpr(
       for (const [name, tyAnno, init] of e[1]) {
         const b = directBorrowOf(init);
         if (b) held.push(b);
-        const it = checkExpr(init, child, diags, fns, structs, breakTy);
+        const it = checkExpr(init, child, diags, fns, structs, enums, breakTy);
         if (!it) return null;
         if (tyAnno && !tyEq(tyAnno, it)) {
           diags.push(err(`let ${name} type mismatch`, "type.mismatch"));
@@ -182,7 +194,7 @@ function checkExpr(
         }
         child.set(name, slotNew(tyAnno ?? it));
       }
-      const out = checkExpr(e[2], child, diags, fns, structs, breakTy);
+      const out = checkExpr(e[2], child, diags, fns, structs, enums, breakTy);
       for (const h of held) releaseBorrow(child, h.place, h.kind);
       return out;
     }
@@ -196,7 +208,7 @@ function checkExpr(
         diags.push(err(`set! of borrowed local \`${e[1]}\``, "mem.borrow_conflict"));
         return null;
       }
-      const it = checkExpr(e[2], env, diags, fns, structs, breakTy);
+      const it = checkExpr(e[2], env, diags, fns, structs, enums, breakTy);
       if (!it) return null;
       if (!tyEq(slot.ty, it)) {
         diags.push(err(`set! type mismatch for ${e[1]}`, "mem.type_mismatch"));
@@ -206,16 +218,16 @@ function checkExpr(
       return slot.ty;
     }
     case "if": {
-      const c = checkExpr(e[1], env, diags, fns, structs, breakTy);
+      const c = checkExpr(e[1], env, diags, fns, structs, enums, breakTy);
       if (!c) return null;
       if (c !== "bool") {
         diags.push(err("if cond must be bool", "type.mismatch"));
         return null;
       }
       const envThen = cloneEnv(env);
-      const t = checkExpr(e[2], envThen, diags, fns, structs, breakTy);
+      const t = checkExpr(e[2], envThen, diags, fns, structs, enums, breakTy);
       const envElse = cloneEnv(env);
-      const f = checkExpr(e[3], envElse, diags, fns, structs, breakTy);
+      const f = checkExpr(e[3], envElse, diags, fns, structs, enums, breakTy);
       if (!t || !f) return null;
       mergeMoved(env, envThen, envElse);
       if (t === "never") return f;
@@ -228,7 +240,7 @@ function checkExpr(
     }
     case "loop": {
       const inner = { current: null as Ty | null };
-      checkExpr(e[1], env, diags, fns, structs, inner);
+      checkExpr(e[1], env, diags, fns, structs, enums, inner);
       if (!inner.current) {
         diags.push(err("loop needs break with value", "type.loop"));
         return null;
@@ -236,7 +248,7 @@ function checkExpr(
       return inner.current;
     }
     case "break": {
-      const t = checkExpr(e[1], env, diags, fns, structs, breakTy);
+      const t = checkExpr(e[1], env, diags, fns, structs, enums, breakTy);
       if (!t) return null;
       if (breakTy.current && !tyEq(breakTy.current, t)) {
         diags.push(err("break types disagree", "type.mismatch"));
@@ -246,7 +258,7 @@ function checkExpr(
       return "never";
     }
     case "return":
-      return checkExpr(e[1], env, diags, fns, structs, breakTy);
+      return checkExpr(e[1], env, diags, fns, structs, enums, breakTy);
     case "call": {
       const callee = e[1];
       if (typeof callee !== "string") {
@@ -256,7 +268,7 @@ function checkExpr(
       const args = e.slice(2) as Expr[];
       const argTys: Ty[] = [];
       for (const a of args) {
-        const t = checkExpr(a, env, diags, fns, structs, breakTy);
+        const t = checkExpr(a, env, diags, fns, structs, enums, breakTy);
         if (!t) return null;
         argTys.push(t);
       }
@@ -315,26 +327,69 @@ function checkExpr(
       return fn[3];
     }
     case "as": {
-      if (!checkExpr(e[2], env, diags, fns, structs, breakTy)) return null;
+      if (!checkExpr(e[2], env, diags, fns, structs, enums, breakTy)) return null;
       return e[1];
     }
     case "match": {
-      const scr = checkExpr(e[1], env, diags, fns, structs, breakTy);
+      const scr = checkExpr(e[1], env, diags, fns, structs, enums, breakTy);
       if (!scr) return null;
       let out: Ty | null = null;
       const armEnvs: Env[] = [];
+      const covered: string[] = [];
+      let hasWildcard = false;
+      const isResult = Array.isArray(scr) && scr[0] === "result";
+      const enumName =
+        Array.isArray(scr) && scr[0] === "named" && enums.has(scr[1]) ? scr[1] : null;
       for (let i = 2; i < e.length; i++) {
         const arm = e[i] as [unknown, Expr];
         const child = cloneEnv(env);
         const pat = arm[0];
-        if (Array.isArray(pat) && (pat[0] === "ok" || pat[0] === "err") && typeof pat[1] === "string") {
+        if (pat === "_") {
+          hasWildcard = true;
+        } else if (
+          Array.isArray(pat) &&
+          (pat[0] === "ok" || pat[0] === "err") &&
+          typeof pat[1] === "string"
+        ) {
+          covered.push(pat[0]);
           if (!Array.isArray(scr) || scr[0] !== "result") {
             diags.push(err("ok/err pattern needs Result", "type.match"));
             return null;
           }
           child.set(pat[1], slotNew(pat[0] === "ok" ? scr[1] : scr[2]));
+        } else if (
+          Array.isArray(pat) &&
+          pat[0] === "variant" &&
+          typeof pat[1] === "string" &&
+          typeof pat[2] === "string"
+        ) {
+          covered.push(pat[2]);
+          if (enumName !== pat[1]) {
+            diags.push(err(`variant pattern enum \`${pat[1]}\` != scrutinee`, "type.match"));
+            return null;
+          }
+          const vars = enums.get(pat[1]);
+          if (!vars) {
+            diags.push(err(`unknown enum \`${pat[1]}\``, "type.unbound"));
+            return null;
+          }
+          const v = vars.find((x) => x.name === pat[2]);
+          if (!v) {
+            diags.push(err(`unknown variant \`${pat[2]}\` on \`${pat[1]}\``, "type.match"));
+            return null;
+          }
+          if (v.payload) {
+            if (typeof pat[3] !== "string") {
+              diags.push(err(`variant \`${pat[2]}\` needs payload bind`, "type.match"));
+              return null;
+            }
+            child.set(pat[3], slotNew(v.payload));
+          } else if (pat.length >= 4) {
+            diags.push(err(`unit variant \`${pat[2]}\` has no payload bind`, "type.match"));
+            return null;
+          }
         }
-        const bt = checkExpr(arm[1], child, diags, fns, structs, breakTy);
+        const bt = checkExpr(arm[1], child, diags, fns, structs, enums, breakTy);
         if (!bt) return null;
         armEnvs.push(child);
         if (out && !tyEq(out, bt)) {
@@ -342,6 +397,22 @@ function checkExpr(
           return null;
         }
         out = bt;
+      }
+      if (isResult && !hasWildcard) {
+        if (!(covered.includes("ok") && covered.includes("err"))) {
+          diags.push(err("Result match not exhaustive", "type.match"));
+          return null;
+        }
+      }
+      if (enumName && !hasWildcard) {
+        for (const v of enums.get(enumName)!) {
+          if (!covered.includes(v.name)) {
+            diags.push(
+              err(`enum \`${enumName}\` match not exhaustive (missing \`${v.name}\`)`, "type.match"),
+            );
+            return null;
+          }
+        }
       }
       if (armEnvs.length >= 2) {
         mergeMoved(env, armEnvs[0]!, armEnvs[1]!);
@@ -359,7 +430,7 @@ function checkExpr(
       }
       const elems = e.slice(2) as Expr[];
       for (const el of elems) {
-        const t = checkExpr(el, env, diags, fns, structs, breakTy);
+        const t = checkExpr(el, env, diags, fns, structs, enums, breakTy);
         if (!t || !tyEq(t, ty)) {
           diags.push(err("array_lit element type mismatch", "type.mismatch"));
           return null;
@@ -400,7 +471,7 @@ function checkExpr(
           diags.push(err(`unknown field \`${fname}\` on \`${tyName}\``, "type.struct"));
           return null;
         }
-        const got = checkExpr(pair[1], env, diags, fns, structs, breakTy);
+        const got = checkExpr(pair[1], env, diags, fns, structs, enums, breakTy);
         if (!got || !tyEq(expected, got)) {
           diags.push(err(`struct_lit field \`${fname}\` type mismatch`, "type.mismatch"));
           return null;
@@ -414,8 +485,43 @@ function checkExpr(
       }
       return ["named", tyName];
     }
+    case "variant_lit": {
+      const ename = e[1];
+      const vname = e[2];
+      if (typeof ename !== "string" || typeof vname !== "string") {
+        diags.push(err("variant_lit must be [variant_lit, enum, variant, payload?]", "type.enum"));
+        return null;
+      }
+      const vars = enums.get(ename);
+      if (!vars) {
+        diags.push(err(`unknown enum \`${ename}\``, "type.unbound"));
+        return null;
+      }
+      const v = vars.find((x) => x.name === vname);
+      if (!v) {
+        diags.push(err(`unknown variant \`${vname}\` on \`${ename}\``, "type.enum"));
+        return null;
+      }
+      if (!v.payload) {
+        if (e.length !== 3) {
+          diags.push(err(`unit variant \`${vname}\` takes no payload`, "type.enum"));
+          return null;
+        }
+      } else {
+        if (e.length !== 4) {
+          diags.push(err(`variant \`${vname}\` needs one payload`, "type.enum"));
+          return null;
+        }
+        const got = checkExpr(e[3] as Expr, env, diags, fns, structs, enums, breakTy);
+        if (!got || !tyEq(v.payload, got)) {
+          diags.push(err(`variant \`${vname}\` payload type mismatch`, "type.mismatch"));
+          return null;
+        }
+      }
+      return ["named", ename];
+    }
     case "field": {
-      const placeTy = checkExpr(e[1] as Expr, env, diags, fns, structs, breakTy);
+      const placeTy = checkExpr(e[1] as Expr, env, diags, fns, structs, enums, breakTy);
       if (!placeTy) return null;
       const fname = e[2];
       if (typeof fname !== "string") {
@@ -440,7 +546,7 @@ function checkExpr(
     }
     case "cap": {
       for (let i = 2; i < e.length; i++) {
-        if (!checkExpr(e[i] as Expr, env, diags, fns, structs, breakTy)) return null;
+        if (!checkExpr(e[i] as Expr, env, diags, fns, structs, enums, breakTy)) return null;
       }
       return "i32";
     }
@@ -494,6 +600,7 @@ export function typecheckModule(mod: Module): CheckResult {
   const diags: Diagnostic[] = [];
   const fns = new Map<string, FnItem>();
   const structs = new Map<string, [string, Ty][]>();
+  const enums: EnumDefs = new Map();
   for (let i = 2; i < mod.length; i++) {
     const it = mod[i];
     if (Array.isArray(it) && it[0] === "fn") fns.set(it[1] as string, it as FnItem);
@@ -501,6 +608,16 @@ export function typecheckModule(mod: Module): CheckResult {
       const name = it[1] as string;
       const fields = it[2] as [string, Ty][];
       structs.set(name, fields);
+    }
+    if (Array.isArray(it) && it[0] === "enum") {
+      const name = it[1] as string;
+      const vars: EnumVar[] = [];
+      for (let j = 2; j < it.length; j++) {
+        const v = it[j] as unknown[];
+        if (!Array.isArray(v) || typeof v[0] !== "string") continue;
+        vars.push({ name: v[0], payload: v.length >= 2 ? (v[1] as Ty) : null });
+      }
+      enums.set(name, vars);
     }
   }
   if (!fns.has("main")) {
@@ -510,7 +627,7 @@ export function typecheckModule(mod: Module): CheckResult {
     const env: Env = new Map();
     for (const [n, ty] of fn[2]) env.set(n, slotNew(ty));
     const breakTy = { current: null as Ty | null };
-    const bodyTy = checkExpr(fn[4], env, diags, fns, structs, breakTy);
+    const bodyTy = checkExpr(fn[4], env, diags, fns, structs, enums, breakTy);
     if (!bodyTy) continue;
     if (bodyTy !== "never" && !tyEq(bodyTy, fn[3])) {
       diags.push(

@@ -7,7 +7,8 @@ export type AirValue =
   | { tag: "ok"; v: AirValue }
   | { tag: "err"; v: AirValue }
   | { tag: "array"; elems: AirValue[] }
-  | { tag: "struct"; name: string; fields: Map<string, AirValue> };
+  | { tag: "struct"; name: string; fields: Map<string, AirValue> }
+  | { tag: "variant"; enumName: string; variant: string; payload: AirValue | null };
 
 /** When set, `cap.print` appends here instead of writing to console. */
 let stdoutCapture: string[] | null = null;
@@ -191,12 +192,28 @@ function evalExpr(e: Expr, env: Map<string, AirValue>, fns: Map<string, FnItem>)
       for (let i = 2; i < e.length; i++) {
         const [pat, body] = e[i] as [unknown, Expr];
         const child = new Map(env);
+        if (pat === "_") return evalExpr(body, child, fns);
         if (Array.isArray(pat) && pat[0] === "ok" && scr.tag === "ok" && typeof pat[1] === "string") {
           child.set(pat[1], scr.v);
           return evalExpr(body, child, fns);
         }
         if (Array.isArray(pat) && pat[0] === "err" && scr.tag === "err" && typeof pat[1] === "string") {
           child.set(pat[1], scr.v);
+          return evalExpr(body, child, fns);
+        }
+        if (
+          Array.isArray(pat) &&
+          pat[0] === "variant" &&
+          scr.tag === "variant" &&
+          typeof pat[1] === "string" &&
+          typeof pat[2] === "string" &&
+          pat[1] === scr.enumName &&
+          pat[2] === scr.variant
+        ) {
+          if (typeof pat[3] === "string") {
+            if (!scr.payload) throw new Error("runtime.variant bind");
+            child.set(pat[3], scr.payload);
+          }
           return evalExpr(body, child, fns);
         }
       }
@@ -214,6 +231,12 @@ function evalExpr(e: Expr, env: Map<string, AirValue>, fns: Map<string, FnItem>)
         fields.set(pair[0], evalExpr(pair[1], env, fns));
       }
       return { tag: "struct", name, fields };
+    }
+    case "variant_lit": {
+      const enumName = e[1] as string;
+      const variant = e[2] as string;
+      const payload = e.length >= 4 ? evalExpr(e[3] as Expr, env, fns) : null;
+      return { tag: "variant", enumName, variant, payload };
     }
     case "field": {
       const place = evalExpr(e[1] as Expr, env, fns);

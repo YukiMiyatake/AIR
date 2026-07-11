@@ -1,0 +1,12 @@
+(mod bad_enum_match
+  (enum Opt
+    (None)
+    (Some i32)
+  )
+  (fn main () i32
+    (match
+      (variant_lit Opt None)
+      ((variant Opt None) (lit i32 0))
+    )
+  )
+)

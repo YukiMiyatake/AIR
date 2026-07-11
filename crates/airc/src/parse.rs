@@ -44,6 +44,9 @@ pub fn parse_module(data: Value) -> Result<Module, Vec<Diagnostic>> {
         if it == "struct" {
             validate_struct(item)?;
         }
+        if it == "enum" {
+            validate_enum(item)?;
+        }
     }
     Ok(Module { name, raw: data })
 }
@@ -75,6 +78,37 @@ fn validate_struct(v: &Value) -> Result<(), Vec<Diagnostic>> {
     Ok(())
 }
 
+fn validate_enum(v: &Value) -> Result<(), Vec<Diagnostic>> {
+    let arr = v.as_array().unwrap();
+    if arr.len() < 3 || !arr[1].is_string() {
+        return Err(vec![err(
+            "parse.invalid",
+            "enum must be [enum, name, variant...]",
+        )]);
+    }
+    for var in &arr[2..] {
+        let Some(va) = var.as_array() else {
+            return Err(vec![err(
+                "parse.invalid",
+                "enum variant must be [name] or [name, ty]",
+            )]);
+        };
+        if va.is_empty() || !va[0].is_string() {
+            return Err(vec![err(
+                "parse.invalid",
+                "enum variant must be [name] or [name, ty]",
+            )]);
+        }
+        if va.len() > 2 {
+            return Err(vec![err(
+                "parse.invalid",
+                "v0 enum variant supports at most one payload type",
+            )]);
+        }
+    }
+    Ok(())
+}
+
 pub fn fns_in_module(module: &Module) -> Vec<&Value> {
     let arr = module.raw.as_array().unwrap();
     arr.iter()
@@ -91,6 +125,14 @@ pub fn structs_in_module(module: &Module) -> Vec<&Value> {
         .collect()
 }
 
+pub fn enums_in_module(module: &Module) -> Vec<&Value> {
+    let arr = module.raw.as_array().unwrap();
+    arr.iter()
+        .skip(2)
+        .filter(|v| tag(v).map(|(t, _)| t == "enum").unwrap_or(false))
+        .collect()
+}
+
 pub fn find_fn<'a>(module: &'a Module, name: &str) -> Option<&'a Value> {
     fns_in_module(module).into_iter().find(|f| {
         f.as_array()
@@ -102,6 +144,15 @@ pub fn find_fn<'a>(module: &'a Module, name: &str) -> Option<&'a Value> {
 
 /// Field list for a named struct: `(field_name, ty)`.
 pub type StructFields = Vec<(String, Value)>;
+
+/// Enum variant: name + optional single payload type.
+#[derive(Debug, Clone)]
+pub struct EnumVariant {
+    pub name: String,
+    pub payload: Option<Value>,
+}
+
+pub type EnumVariants = Vec<EnumVariant>;
 
 pub fn collect_struct_defs(module: &Module) -> Result<HashMap<String, StructFields>, Vec<Diagnostic>> {
     let mut out = HashMap::new();
@@ -120,6 +171,43 @@ pub fn collect_struct_defs(module: &Module) -> Result<HashMap<String, StructFiel
             fields.push((fa[0].as_str().unwrap().to_string(), fa[1].clone()));
         }
         out.insert(name, fields);
+    }
+    Ok(out)
+}
+
+pub fn collect_enum_defs(module: &Module) -> Result<HashMap<String, EnumVariants>, Vec<Diagnostic>> {
+    let mut out = HashMap::new();
+    for e in enums_in_module(module) {
+        let arr = e.as_array().unwrap();
+        let name = arr[1].as_str().unwrap().to_string();
+        if out.contains_key(&name) {
+            return Err(vec![err(
+                "parse.duplicate",
+                format!("duplicate enum `{name}`"),
+            )]);
+        }
+        let mut variants = Vec::new();
+        let mut seen = HashMap::<String, ()>::new();
+        for var in &arr[2..] {
+            let va = var.as_array().unwrap();
+            let vname = va[0].as_str().unwrap().to_string();
+            if seen.insert(vname.clone(), ()).is_some() {
+                return Err(vec![err(
+                    "parse.duplicate",
+                    format!("duplicate variant `{vname}` in enum `{name}`"),
+                )]);
+            }
+            let payload = if va.len() == 2 {
+                Some(va[1].clone())
+            } else {
+                None
+            };
+            variants.push(EnumVariant {
+                name: vname,
+                payload,
+            });
+        }
+        out.insert(name, variants);
     }
     Ok(out)
 }

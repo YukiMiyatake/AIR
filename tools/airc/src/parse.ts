@@ -306,6 +306,20 @@ function parseExpr(x: unknown, diags: Diagnostic[]): Expr | null {
       if (place === null) return null;
       return ["field", place, x[2]];
     }
+    case "variant_lit": {
+      if (x.length < 3 || typeof x[1] !== "string" || typeof x[2] !== "string") {
+        diags.push(err("variant_lit must be [variant_lit, enum, variant, payload?]"));
+        return null;
+      }
+      if (x.length === 3) return ["variant_lit", x[1], x[2]];
+      if (x.length !== 4) {
+        diags.push(err("variant_lit takes at most one payload"));
+        return null;
+      }
+      const payload = parseExpr(x[3], diags);
+      if (payload === null) return null;
+      return ["variant_lit", x[1], x[2], payload];
+    }
     default:
       diags.push(err(`unknown expr tag: ${tag}`));
       return null;
@@ -362,8 +376,30 @@ function parseItem(x: unknown, diags: Diagnostic[]): Item | null {
     return ["struct", x[1], fields];
   }
   if (x[0] === "enum") {
-    // Accept and keep raw for now.
-    return x as Item;
+    if (x.length < 3 || typeof x[1] !== "string") {
+      diags.push(err("enum must be [enum, name, variant...]"));
+      return null;
+    }
+    const variants: unknown[] = [];
+    for (let i = 2; i < x.length; i++) {
+      const v = x[i];
+      if (!Array.isArray(v) || v.length < 1 || typeof v[0] !== "string") {
+        diags.push(err("enum variant must be [name] or [name, ty]"));
+        return null;
+      }
+      if (v.length > 2) {
+        diags.push(err("v0 enum variant supports at most one payload type"));
+        return null;
+      }
+      if (v.length === 2) {
+        const ty = parseTy(v[1], diags);
+        if (!ty) return null;
+        variants.push([v[0], ty]);
+      } else {
+        variants.push([v[0]]);
+      }
+    }
+    return ["enum", x[1], ...variants] as Item;
   }
   diags.push(err(`unknown item tag: ${x[0]}`));
   return null;

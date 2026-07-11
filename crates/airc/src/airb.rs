@@ -54,6 +54,8 @@ pub const KNOWN_TAGS: &[&str] = &[
     "slice",
     "struct_lit",
     "field",
+    "variant",
+    "variant_lit",
 ];
 
 const V_NULL: u8 = 0x00;
