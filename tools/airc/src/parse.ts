@@ -308,17 +308,16 @@ function parseExpr(x: unknown, diags: Diagnostic[]): Expr | null {
     }
     case "variant_lit": {
       if (x.length < 3 || typeof x[1] !== "string" || typeof x[2] !== "string") {
-        diags.push(err("variant_lit must be [variant_lit, enum, variant, payload?]"));
+        diags.push(err("variant_lit must be [variant_lit, enum, variant, ...payloads]"));
         return null;
       }
-      if (x.length === 3) return ["variant_lit", x[1], x[2]];
-      if (x.length !== 4) {
-        diags.push(err("variant_lit takes at most one payload"));
-        return null;
+      const payloads: Expr[] = [];
+      for (let i = 3; i < x.length; i++) {
+        const p = parseExpr(x[i], diags);
+        if (p === null) return null;
+        payloads.push(p);
       }
-      const payload = parseExpr(x[3], diags);
-      if (payload === null) return null;
-      return ["variant_lit", x[1], x[2], payload];
+      return ["variant_lit", x[1], x[2], ...payloads];
     }
     default:
       diags.push(err(`unknown expr tag: ${tag}`));
@@ -384,19 +383,38 @@ function parseItem(x: unknown, diags: Diagnostic[]): Item | null {
     for (let i = 2; i < x.length; i++) {
       const v = x[i];
       if (!Array.isArray(v) || v.length < 1 || typeof v[0] !== "string") {
-        diags.push(err("enum variant must be [name] or [name, ty]"));
+        diags.push(err("enum variant must be [name] | [name, ty] | [name, [ty...]]"));
         return null;
       }
       if (v.length > 2) {
-        diags.push(err("v0 enum variant supports at most one payload type"));
+        diags.push(err("enum variant must be [name] | [name, ty] | [name, [ty...]]"));
         return null;
       }
-      if (v.length === 2) {
-        const ty = parseTy(v[1], diags);
+      if (v.length === 1) {
+        variants.push([v[0]]);
+        continue;
+      }
+      const second = v[1];
+      const isCompound =
+        Array.isArray(second) &&
+        typeof second[0] === "string" &&
+        ["named", "ref", "array", "result", "ptr", "slice", "fn"].includes(second[0]);
+      if (Array.isArray(second) && !isCompound) {
+        const tys: Ty[] = [];
+        for (const el of second) {
+          const ty = parseTy(el, diags);
+          if (!ty) return null;
+          tys.push(ty);
+        }
+        if (tys.length === 0) {
+          diags.push(err("enum tuple payload must not be empty"));
+          return null;
+        }
+        variants.push([v[0], tys]);
+      } else {
+        const ty = parseTy(second, diags);
         if (!ty) return null;
         variants.push([v[0], ty]);
-      } else {
-        variants.push([v[0]]);
       }
     }
     return ["enum", x[1], ...variants] as Item;

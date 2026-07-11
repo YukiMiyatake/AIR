@@ -47,7 +47,8 @@ In particular: `examples/hello.air.json` prints `hello` on program stdout (asser
 | Done | Binary `.airb` v1 sketch (`pack` / `unpack`) |
 | Done | User `struct` + `struct_lit` + `field` |
 | Done | User `enum` + `variant_lit` + `variant` match |
-| Later | Tuple enum payloads; richer binary; deprecate JSON as default |
+| Done | Tuple enum payloads (`[ty...]`) |
+| Later | Richer binary; deprecate JSON as default |
 
 ### Hosted I/O priority (do not wait for Phase 3/5)
 

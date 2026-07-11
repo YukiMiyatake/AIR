@@ -20,8 +20,23 @@ function isFloatTy(t: Ty): boolean {
   return t === "f32" || t === "f64";
 }
 
-type EnumVar = { name: string; payload: Ty | null };
+type EnumVar = { name: string; payloads: Ty[] };
 type EnumDefs = Map<string, EnumVar[]>;
+
+function isCompoundTyTag(s: string): boolean {
+  return ["named", "ref", "array", "result", "ptr", "slice", "fn"].includes(s);
+}
+
+function parseVariantPayloadTys(v: unknown): Ty[] | null {
+  if (Array.isArray(v)) {
+    if (typeof v[0] === "string" && isCompoundTyTag(v[0])) {
+      return [v as Ty];
+    }
+    if (v.length === 0) return null;
+    return v as Ty[];
+  }
+  return [v as Ty];
+}
 
 function isCopy(
   t: Ty,
@@ -36,7 +51,7 @@ function isCopy(
     if (fields) return fields.every(([, ft]) => isCopy(ft, structs, enums));
     const vars = enums.get(t[1]);
     if (vars) {
-      return vars.every((v) => (v.payload ? isCopy(v.payload, structs, enums) : true));
+      return vars.every((v) => v.payloads.every((pt) => isCopy(pt, structs, enums)));
     }
     return false;
   }
@@ -378,15 +393,22 @@ function checkExpr(
             diags.push(err(`unknown variant \`${pat[2]}\` on \`${pat[1]}\``, "type.match"));
             return null;
           }
-          if (v.payload) {
-            if (typeof pat[3] !== "string") {
-              diags.push(err(`variant \`${pat[2]}\` needs payload bind`, "type.match"));
+          if (v.payloads.length !== pat.length - 3) {
+            diags.push(
+              err(
+                `variant \`${pat[2]}\` expects ${v.payloads.length} payload bind(s), got ${pat.length - 3}`,
+                "type.match",
+              ),
+            );
+            return null;
+          }
+          for (let bi = 0; bi < v.payloads.length; bi++) {
+            const bind = pat[3 + bi];
+            if (typeof bind !== "string") {
+              diags.push(err("variant payload binds must be names", "type.match"));
               return null;
             }
-            child.set(pat[3], slotNew(v.payload));
-          } else if (pat.length >= 4) {
-            diags.push(err(`unit variant \`${pat[2]}\` has no payload bind`, "type.match"));
-            return null;
+            child.set(bind, slotNew(v.payloads[bi]!));
           }
         }
         const bt = checkExpr(arm[1], child, diags, fns, structs, enums, breakTy);
@@ -489,7 +511,7 @@ function checkExpr(
       const ename = e[1];
       const vname = e[2];
       if (typeof ename !== "string" || typeof vname !== "string") {
-        diags.push(err("variant_lit must be [variant_lit, enum, variant, payload?]", "type.enum"));
+        diags.push(err("variant_lit must be [variant_lit, enum, variant, ...payloads]", "type.enum"));
         return null;
       }
       const vars = enums.get(ename);
@@ -502,19 +524,20 @@ function checkExpr(
         diags.push(err(`unknown variant \`${vname}\` on \`${ename}\``, "type.enum"));
         return null;
       }
-      if (!v.payload) {
-        if (e.length !== 3) {
-          diags.push(err(`unit variant \`${vname}\` takes no payload`, "type.enum"));
-          return null;
-        }
-      } else {
-        if (e.length !== 4) {
-          diags.push(err(`variant \`${vname}\` needs one payload`, "type.enum"));
-          return null;
-        }
-        const got = checkExpr(e[3] as Expr, env, diags, fns, structs, enums, breakTy);
-        if (!got || !tyEq(v.payload, got)) {
-          diags.push(err(`variant \`${vname}\` payload type mismatch`, "type.mismatch"));
+      const args = e.slice(3) as Expr[];
+      if (args.length !== v.payloads.length) {
+        diags.push(
+          err(
+            `variant \`${vname}\` expects ${v.payloads.length} payload(s), got ${args.length}`,
+            "type.enum",
+          ),
+        );
+        return null;
+      }
+      for (let i = 0; i < args.length; i++) {
+        const got = checkExpr(args[i]!, env, diags, fns, structs, enums, breakTy);
+        if (!got || !tyEq(v.payloads[i]!, got)) {
+          diags.push(err(`variant \`${vname}\` payload ${i} type mismatch`, "type.mismatch"));
           return null;
         }
       }
@@ -615,7 +638,9 @@ export function typecheckModule(mod: Module): CheckResult {
       for (let j = 2; j < it.length; j++) {
         const v = it[j] as unknown[];
         if (!Array.isArray(v) || typeof v[0] !== "string") continue;
-        vars.push({ name: v[0], payload: v.length >= 2 ? (v[1] as Ty) : null });
+        const payloads = v.length >= 2 ? parseVariantPayloadTys(v[1]) : [];
+        if (payloads === null) continue;
+        vars.push({ name: v[0], payloads });
       }
       enums.set(name, vars);
     }

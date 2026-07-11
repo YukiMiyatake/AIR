@@ -42,7 +42,7 @@ pub enum AirValue {
     Variant {
         enum_name: String,
         variant: String,
-        payload: Option<Box<AirValue>>,
+        payloads: Vec<AirValue>,
     },
 }
 
@@ -298,15 +298,17 @@ fn eval2(
                         child.insert(name, (**v).clone());
                         return eval2(body, &mut child, fns);
                     }
-                    (Some("variant"), AirValue::Variant { enum_name, variant, payload }) => {
+                    (Some("variant"), AirValue::Variant { enum_name, variant, payloads }) => {
                         let penum = pat[1].as_str().unwrap();
                         let pvar = pat[2].as_str().unwrap();
                         if penum == enum_name.as_str() && pvar == variant.as_str() {
-                            if let Some(bind) = pat.get(3).and_then(|x| x.as_str()) {
-                                let Some(p) = payload else {
-                                    return Err(EvalErr::Msg("runtime.variant bind".into()));
-                                };
-                                child.insert(bind.to_string(), (**p).clone());
+                            let binds = &pat[3..];
+                            if binds.len() != payloads.len() {
+                                return Err(EvalErr::Msg("runtime.variant bind arity".into()));
+                            }
+                            for (i, bind_v) in binds.iter().enumerate() {
+                                let name = bind_v.as_str().unwrap().to_string();
+                                child.insert(name, payloads[i].clone());
                             }
                             return eval2(body, &mut child, fns);
                         }
@@ -351,15 +353,14 @@ fn eval2(
                 .as_str()
                 .ok_or_else(|| EvalErr::Msg("runtime.variant_lit variant".into()))?
                 .to_string();
-            let payload = if rest.len() >= 3 {
-                Some(Box::new(eval2(&rest[2], env, fns)?))
-            } else {
-                None
-            };
+            let mut payloads = Vec::new();
+            for arg in &rest[2..] {
+                payloads.push(eval2(arg, env, fns)?);
+            }
             Ok(AirValue::Variant {
                 enum_name,
                 variant,
-                payload,
+                payloads,
             })
         }
         "field" => {

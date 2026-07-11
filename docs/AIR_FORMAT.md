@@ -138,7 +138,7 @@ arm := [pattern, expr]
 pattern :=
   | ["ok", name] | ["err", name]           // for Result
   | ["var", name]                            // bind all
-  | ["variant", enum_path, variant, name?] // enum payload bind
+  | ["variant", enum_path, variant, bind...] // enum payload binds (0+)
   | "_"                                      // wildcard (JSON string)
 ```
 
@@ -201,12 +201,14 @@ Calling a fn pointer: `["call", expr_callee, args...]` where callee type is `["f
 ### Variant construction (v0)
 
 ```json
-["variant_lit", enum_name, variant_name]           // unit
-["variant_lit", enum_name, variant_name, payload]  // single payload
+["variant_lit", enum_name, variant_name]                 // unit
+["variant_lit", enum_name, variant_name, payload...]     // 1+ payloads
 ```
 
-v0: at most one payload type per variant (tuple payloads later).  
-Match with `["variant", enum_name, variant_name, bind?]`. Exhaustive unless `_`.
+Variant defs: `[name]` | `[name, ty]` | `[name, [ty...]]`.  
+A second element that is an array whose head is a type constructor (`named`/`ref`/`array`/…) is a **single** compound `ty`; otherwise an array is a **tuple** of payload types.
+
+Match: `["variant", enum_name, variant_name, bind...]` — one bind name per payload (none for unit). Exhaustive unless `_`.
 
 ### Field projection (v0)
 

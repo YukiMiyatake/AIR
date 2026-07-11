@@ -222,6 +222,22 @@ Expected `main` → `42`. Non-exhaustive match fails check (`bad_enum_match.air`
 
 ---
 
+## Example 10 — Tuple enum payload
+
+```json
+["mod", "pair",
+  ["enum", "PairE", ["Pair", ["i32", "i32"]]],
+  ["fn", "main", [], "i32",
+    ["match",
+      ["variant_lit", "PairE", "Pair", ["lit", "i32", "3"], ["lit", "i32", "4"]],
+      [["variant", "PairE", "Pair", "a", "b"],
+        ["call", "+", ["var", "a"], ["var", "b"]]]]]]
+```
+
+Expected `main` → `7`.
+
+---
+
 ## Using these examples
 
 Primary fixtures are **S-expr** (`.air`). JSON (`.air.json`) remains for the TS bootstrap and parity checks — see [ENCODING.md](ENCODING.md).
@@ -239,6 +255,7 @@ Primary fixtures are **S-expr** (`.air`). JSON (`.air.json`) remains for the TS 
 | `borrow_ok.air` | `7` |
 | `point.air` | `7` (`struct` + `field`) |
 | `option.air` | `42` (`enum` + `variant` match) |
+| `pair.air` | `7` (tuple enum payload) |
 | `bad_enum_match.air` | **check fails** (`type.match` non-exhaustive) |
 
 ```bash

@@ -90,23 +90,54 @@ fn validate_enum(v: &Value) -> Result<(), Vec<Diagnostic>> {
         let Some(va) = var.as_array() else {
             return Err(vec![err(
                 "parse.invalid",
-                "enum variant must be [name] or [name, ty]",
+                "enum variant must be [name] | [name, ty] | [name, [ty...]]",
             )]);
         };
         if va.is_empty() || !va[0].is_string() {
             return Err(vec![err(
                 "parse.invalid",
-                "enum variant must be [name] or [name, ty]",
+                "enum variant must be [name] | [name, ty] | [name, [ty...]]",
             )]);
         }
         if va.len() > 2 {
             return Err(vec![err(
                 "parse.invalid",
-                "v0 enum variant supports at most one payload type",
+                "enum variant must be [name] | [name, ty] | [name, [ty...]]",
             )]);
+        }
+        if va.len() == 2 {
+            parse_variant_payload_tys(&va[1])?;
         }
     }
     Ok(())
+}
+
+fn is_compound_ty_tag(s: &str) -> bool {
+    matches!(
+        s,
+        "named" | "ref" | "array" | "result" | "ptr" | "slice" | "fn"
+    )
+}
+
+/// Decode the payload side of a variant: single `ty` or tuple `[ty...]`.
+fn parse_variant_payload_tys(v: &Value) -> Result<Vec<Value>, Vec<Diagnostic>> {
+    if let Some(arr) = v.as_array() {
+        if arr
+            .first()
+            .and_then(|x| x.as_str())
+            .is_some_and(is_compound_ty_tag)
+        {
+            return Ok(vec![v.clone()]);
+        }
+        if arr.is_empty() {
+            return Err(vec![err(
+                "parse.invalid",
+                "enum tuple payload must not be empty",
+            )]);
+        }
+        return Ok(arr.clone());
+    }
+    Ok(vec![v.clone()])
 }
 
 pub fn fns_in_module(module: &Module) -> Vec<&Value> {
@@ -145,11 +176,11 @@ pub fn find_fn<'a>(module: &'a Module, name: &str) -> Option<&'a Value> {
 /// Field list for a named struct: `(field_name, ty)`.
 pub type StructFields = Vec<(String, Value)>;
 
-/// Enum variant: name + optional single payload type.
+/// Enum variant: name + zero or more payload types (tuple).
 #[derive(Debug, Clone)]
 pub struct EnumVariant {
     pub name: String,
-    pub payload: Option<Value>,
+    pub payloads: Vec<Value>,
 }
 
 pub type EnumVariants = Vec<EnumVariant>;
@@ -197,14 +228,14 @@ pub fn collect_enum_defs(module: &Module) -> Result<HashMap<String, EnumVariants
                     format!("duplicate variant `{vname}` in enum `{name}`"),
                 )]);
             }
-            let payload = if va.len() == 2 {
-                Some(va[1].clone())
+            let payloads = if va.len() == 2 {
+                parse_variant_payload_tys(&va[1])?
             } else {
-                None
+                Vec::new()
             };
             variants.push(EnumVariant {
                 name: vname,
-                payload,
+                payloads,
             });
         }
         out.insert(name, variants);
