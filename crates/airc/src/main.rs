@@ -125,17 +125,38 @@ fn main() -> ExitCode {
 mod tests {
     use airc::{parse_module_json, run_module, typecheck_module, AirValue};
 
+    fn load(path: &str) -> String {
+        std::fs::read_to_string(path)
+            .or_else(|_| std::fs::read_to_string(format!("../../{path}")))
+            .unwrap_or_else(|_| panic!("missing {path}"))
+    }
+
+    fn run_i32(path: &str) -> i32 {
+        let module = parse_module_json(&load(path)).expect("parse");
+        typecheck_module(&module).expect("check");
+        match run_module(&module).expect("run") {
+            AirValue::I32(n) => n,
+            other => panic!("expected i32, got {other:?}"),
+        }
+    }
+
     #[test]
     fn sum_example_is_55() {
-        let text = std::fs::read_to_string("examples/sum.air.json")
-            .or_else(|_| std::fs::read_to_string("../../examples/sum.air.json"))
-            .expect("sum.air.json");
-        let module = parse_module_json(&text).expect("parse");
-        typecheck_module(&module).expect("check");
-        let v = run_module(&module).expect("run");
-        match v {
-            AirValue::I32(55) => {}
-            other => panic!("expected 55, got {other:?}"),
-        }
+        assert_eq!(run_i32("examples/sum.air.json"), 55);
+    }
+
+    #[test]
+    fn div_by_zero_match_is_minus_one() {
+        assert_eq!(run_i32("examples/div.air.json"), -1);
+    }
+
+    #[test]
+    fn array_sum_is_10() {
+        assert_eq!(run_i32("examples/arr.air.json"), 10);
+    }
+
+    #[test]
+    fn hello_returns_zero() {
+        assert_eq!(run_i32("examples/hello.air.json"), 0);
     }
 }

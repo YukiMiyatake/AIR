@@ -132,6 +132,19 @@ Requires hosted profile. Freestanding must not use `cap` print.
 
 ## Using these examples
 
+Runnable JSON fixtures live under [`examples/`](../examples/):
+
+| File | Expected `main` result |
+|------|-------------------------|
+| `sum.air.json` | `55` |
+| `div.air.json` | `-1` (div by zero → err arm) |
+| `arr.air.json` | `10` |
+| `hello.air.json` | `0` (prints `hello`) |
+
+```bash
+docker compose run --rm dev cargo run -p airc -- run examples/arr.air.json
+```
+
 - Token benchmarks: minify JSON AST vs equivalent Rust/C for the same suite.
 - Round-trip tests (when implemented) must accept these modules as air-format v0.
 - Do not reintroduce dynamic `list` / untyped `num` / ad-hoc `host` tags.

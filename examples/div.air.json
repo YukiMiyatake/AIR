@@ -1,0 +1,28 @@
+[
+  "mod",
+  "div",
+  [
+    "fn",
+    "checked_div",
+    [["a", "i32"], ["b", "i32"]],
+    ["result", "i32", "str"],
+    [
+      "if",
+      ["call", "==", ["var", "b"], ["lit", "i32", "0"]],
+      ["call", "err", ["lit", "str", "div0"]],
+      ["call", "ok", ["call", "/", ["var", "a"], ["var", "b"]]]
+    ]
+  ],
+  [
+    "fn",
+    "main",
+    [],
+    "i32",
+    [
+      "match",
+      ["call", "checked_div", ["lit", "i32", "10"], ["lit", "i32", "0"]],
+      [["ok", "v"], ["var", "v"]],
+      [["err", "e"], ["lit", "i32", "-1"]]
+    ]
+  ]
+]

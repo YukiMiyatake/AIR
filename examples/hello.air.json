@@ -1,0 +1,15 @@
+[
+  "mod",
+  "hello",
+  [
+    "fn",
+    "main",
+    [],
+    "i32",
+    [
+      "seq",
+      ["cap", "print", ["lit", "str", "hello"]],
+      ["lit", "i32", "0"]
+    ]
+  ]
+]

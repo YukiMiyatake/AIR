@@ -206,6 +206,33 @@ fn check_expr(
                         None
                     }
                 }
+                "ok" => {
+                    if arg_tys.len() == 1 {
+                        Some(serde_json::json!(["result", arg_tys[0], "str"]))
+                    } else {
+                        diags.push(err("type.call", "ok takes one arg"));
+                        None
+                    }
+                }
+                "err" => {
+                    if arg_tys.len() == 1 {
+                        Some(serde_json::json!(["result", "i32", "str"]))
+                    } else {
+                        diags.push(err("type.call", "err takes one arg"));
+                        None
+                    }
+                }
+                "aget" => {
+                    if arg_tys.len() == 2 {
+                        if let Some(arr) = arg_tys[0].as_array() {
+                            if arr.first().and_then(|x| x.as_str()) == Some("array") && arr.len() >= 2 {
+                                return Some(arr[1].clone());
+                            }
+                        }
+                    }
+                    diags.push(err("type.call", "aget(array, idx)"));
+                    None
+                }
                 other => {
                     let f = fns.get(other);
                     let Some(f) = f else {
@@ -216,6 +243,68 @@ fn check_expr(
                     Some(ret)
                 }
             }
+        }
+        "match" => {
+            if rest.is_empty() {
+                diags.push(err("type.match", "match needs scrutinee"));
+                return None;
+            }
+            let scr = check_expr(&rest[0], env, fns, break_ty, diags)?;
+            let mut out: Option<Value> = None;
+            for arm in &rest[1..] {
+                let aa = arm.as_array()?;
+                if aa.len() != 2 {
+                    diags.push(err("type.match", "arm must be [pattern, expr]"));
+                    return None;
+                }
+                let mut child = env.clone();
+                if let Some(pat) = aa[0].as_array() {
+                    if pat.len() >= 2 {
+                        if let (Some("ok"), Some(name)) = (pat[0].as_str(), pat[1].as_str()) {
+                            if let Some(scr_arr) = scr.as_array() {
+                                if scr_arr.first().and_then(|x| x.as_str()) == Some("result") {
+                                    child.insert(name.to_string(), scr_arr[1].clone());
+                                }
+                            }
+                        } else if let (Some("err"), Some(name)) = (pat[0].as_str(), pat[1].as_str())
+                        {
+                            if let Some(scr_arr) = scr.as_array() {
+                                if scr_arr.first().and_then(|x| x.as_str()) == Some("result") {
+                                    child.insert(name.to_string(), scr_arr[2].clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                let bt = check_expr(&aa[1], &mut child, fns, break_ty, diags)?;
+                if let Some(prev) = &out {
+                    if !ty_eq(prev, &bt) {
+                        diags.push(err("type.mismatch", "match arms type mismatch"));
+                        return None;
+                    }
+                }
+                out = Some(bt);
+            }
+            out
+        }
+        "array_lit" => {
+            if rest.is_empty() {
+                diags.push(err("type.array", "array_lit needs element type"));
+                return None;
+            }
+            let elem_ty = &rest[0];
+            for el in &rest[1..] {
+                let t = check_expr(el, env, fns, break_ty, diags)?;
+                if !ty_eq(&t, elem_ty) {
+                    diags.push(err("type.mismatch", "array_lit element type mismatch"));
+                    return None;
+                }
+            }
+            Some(serde_json::json!([
+                "array",
+                elem_ty,
+                rest.len() - 1
+            ]))
         }
         "as" => {
             check_expr(&rest[1], env, fns, break_ty, diags)?;
