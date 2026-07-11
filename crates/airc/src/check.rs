@@ -288,6 +288,20 @@ fn check_expr(
                         None
                     }
                 }
+                "checked_add" | "checked_sub" | "checked_mul" | "checked_div" => {
+                    if arg_tys.len() == 2
+                        && ty_eq(&arg_tys[0], &arg_tys[1])
+                        && is_int_ty(&arg_tys[0])
+                    {
+                        Some(serde_json::json!(["result", arg_tys[0], "str"]))
+                    } else {
+                        diags.push(err(
+                            "type.mismatch",
+                            format!("{callee} needs two same integer args"),
+                        ));
+                        None
+                    }
+                }
                 "aget" => {
                     if arg_tys.len() == 2 {
                         if let Some(arr) = arg_tys[0].as_array() {

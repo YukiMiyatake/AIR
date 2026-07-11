@@ -128,6 +128,30 @@ function evalExpr(e: Expr, env: Map<string, AirValue>, fns: Map<string, FnItem>)
       }
       if (callee === "ok") return { tag: "ok", v: args[0]! };
       if (callee === "err") return { tag: "err", v: args[0]! };
+      if (
+        callee === "checked_add" ||
+        callee === "checked_sub" ||
+        callee === "checked_mul" ||
+        callee === "checked_div"
+      ) {
+        const a = asI32(args[0]!);
+        const b = asI32(args[1]!);
+        if (callee === "checked_div") {
+          if (b === 0) return { tag: "err", v: { tag: "str", v: "div0" } };
+          if (a === -2147483648 && b === -1) {
+            return { tag: "err", v: { tag: "str", v: "overflow" } };
+          }
+          return { tag: "ok", v: { tag: "i32", v: (a / b) | 0 } };
+        }
+        let wide: bigint;
+        if (callee === "checked_add") wide = BigInt(a) + BigInt(b);
+        else if (callee === "checked_sub") wide = BigInt(a) - BigInt(b);
+        else wide = BigInt(a) * BigInt(b);
+        if (wide > 2147483647n || wide < -2147483648n) {
+          return { tag: "err", v: { tag: "str", v: "overflow" } };
+        }
+        return { tag: "ok", v: { tag: "i32", v: Number(wide) } };
+      }
       if (callee === "aget") {
         const arr = args[0]!;
         const idx = asI32(args[1]!);

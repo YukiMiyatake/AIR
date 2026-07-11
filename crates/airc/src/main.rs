@@ -178,4 +178,27 @@ mod tests {
             "expected mem.use_after_move, got {err:?}"
         );
     }
+
+    #[test]
+    fn checked_add_overflow_is_minus_one() {
+        assert_eq!(run_i32("examples/overflow.air.json"), -1);
+    }
+
+    #[test]
+    fn checked_add_ok_path() {
+        let src = r#"[
+          "mod", "t",
+          ["fn", "main", [], "i32",
+            ["match",
+              ["call", "checked_add", ["lit", "i32", "20"], ["lit", "i32", "22"]],
+              [["ok", "v"], ["var", "v"]],
+              [["err", "e"], ["lit", "i32", "-1"]]]]]
+        "#;
+        let module = parse_module_json(src).expect("parse");
+        typecheck_module(&module).expect("check");
+        match run_module(&module).expect("run") {
+            AirValue::I32(n) => assert_eq!(n, 42),
+            other => panic!("{other:?}"),
+        }
+    }
 }

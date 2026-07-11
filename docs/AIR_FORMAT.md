@@ -185,6 +185,7 @@ Mismatched widths require `["as", ty, expr]` first.
 | Builtin | Meaning |
 |---------|---------|
 | `ok` / `err` | Construct `Result` values: `["call", "ok", v]`, `["call", "err", e]` |
+| `checked_add` / `checked_sub` / `checked_mul` / `checked_div` | `i32 × i32 → Result[i32, str]`; `err` on overflow or div-by-zero |
 | `aget` | `aget(arr, idx)` element load for `[T; N]` (OOB: interpreter abort in v0) |
 | `aset` | `aset(arr, idx, v)` element store (arrays are mutable places in v0 locals) |
 

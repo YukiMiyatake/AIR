@@ -166,6 +166,42 @@ fn eval2(
                     }
                     Ok(AirValue::I32(as_i32(&args[0])? / b))
                 }
+                "checked_add" => {
+                    let a = as_i32(&args[0])?;
+                    let b = as_i32(&args[1])?;
+                    match a.checked_add(b) {
+                        Some(v) => Ok(AirValue::Ok(Box::new(AirValue::I32(v)))),
+                        None => Ok(AirValue::Err(Box::new(AirValue::Str("overflow".into())))),
+                    }
+                }
+                "checked_sub" => {
+                    let a = as_i32(&args[0])?;
+                    let b = as_i32(&args[1])?;
+                    match a.checked_sub(b) {
+                        Some(v) => Ok(AirValue::Ok(Box::new(AirValue::I32(v)))),
+                        None => Ok(AirValue::Err(Box::new(AirValue::Str("overflow".into())))),
+                    }
+                }
+                "checked_mul" => {
+                    let a = as_i32(&args[0])?;
+                    let b = as_i32(&args[1])?;
+                    match a.checked_mul(b) {
+                        Some(v) => Ok(AirValue::Ok(Box::new(AirValue::I32(v)))),
+                        None => Ok(AirValue::Err(Box::new(AirValue::Str("overflow".into())))),
+                    }
+                }
+                "checked_div" => {
+                    let a = as_i32(&args[0])?;
+                    let b = as_i32(&args[1])?;
+                    if b == 0 {
+                        Ok(AirValue::Err(Box::new(AirValue::Str("div0".into()))))
+                    } else {
+                        match a.checked_div(b) {
+                            Some(v) => Ok(AirValue::Ok(Box::new(AirValue::I32(v)))),
+                            None => Ok(AirValue::Err(Box::new(AirValue::Str("overflow".into())))),
+                        }
+                    }
+                }
                 "<=" => Ok(AirValue::Bool(as_i32(&args[0])? <= as_i32(&args[1])?)),
                 "<" => Ok(AirValue::Bool(as_i32(&args[0])? < as_i32(&args[1])?)),
                 ">" => Ok(AirValue::Bool(as_i32(&args[0])? > as_i32(&args[1])?)),
