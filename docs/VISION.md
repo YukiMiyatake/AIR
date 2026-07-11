@@ -5,7 +5,8 @@
 It targets the same class of software as C, C++, and Rust — including **freestanding / kernel-level** code — while optimizing the **representation** for AI authors (agents) and machine clarity. It is not a dynamic scripting language and not a short-script DSL.
 
 Near-term implementation cut: [SUBSET.md](SUBSET.md).  
-Phase 1 locked choices: [PHASE1_DECISIONS.md](PHASE1_DECISIONS.md).
+Phase 1 locked choices: [PHASE1_DECISIONS.md](PHASE1_DECISIONS.md).  
+Tooling (Docker / TS→Rust): [TOOLING.md](TOOLING.md).
 
 Human-oriented text syntax is secondary. Static types, explicit memory, and capability-gated effects are primary.
 
@@ -69,5 +70,6 @@ AIR keeps **systems-level ambition** and changes the representation:
 - [AIR_FORMAT.md](AIR_FORMAT.md) — minimal typed AST (air-format v0)
 - [OWNERSHIP.md](OWNERSHIP.md) — v0 ownership / borrow operational rules
 - [AI_NATIVE.md](AI_NATIVE.md) — memory/errors/process/shell/capabilities (AI-Native defaults)
-- [EXAMPLES.md](EXAMPLES.md) — sketches (pending rewrite for static/systems model)
+- [TOOLING.md](TOOLING.md) — Docker-first; TS bootstrap → Rust production
+- [EXAMPLES.md](EXAMPLES.md) — air-format v0 example suite
 - [ROADMAP.md](ROADMAP.md) — phases

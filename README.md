@@ -10,21 +10,43 @@ AIR is unrelated to CostGate / MCP tooling. Communication IR is a separate defer
 
 ## Status
 
-Design documentation + **Phase 1 toolchain scaffold** (`tools/airc`, TypeScript).
-Parse/check/run land in follow-up PRs. See [docs/SUBSET.md](docs/SUBSET.md) and [docs/PHASE1_DECISIONS.md](docs/PHASE1_DECISIONS.md).
+- Design docs + Phase 1 **TypeScript** `tools/airc` (parse/check/run; `examples/sum.air.json` → 55)
+- **Rust** `crates/airc` scaffold (production path)
+- **Docker-first** development ([docs/TOOLING.md](docs/TOOLING.md))
 
-## Tooling (Phase 1)
+## Docker (supported workflow)
 
 ```bash
-npm install
-npm run build
-npm run airc -- version
+docker compose build dev
+docker compose run --rm dev bash
+
+# TypeScript bootstrap airc
+docker compose run --rm dev npm ci
+docker compose run --rm dev npm run airc -- run examples/sum.air.json
+
+# Rust airc scaffold
+docker compose run --rm dev cargo test --workspace
+docker compose run --rm dev cargo run -p airc -- version
+
+# Release-style binary image
+docker compose build airc-rs
+docker compose run --rm airc-rs version
+```
+
+## Local (optional)
+
+Node 22+ for TS; Rust 1.85+ for `crates/airc`. Prefer Docker if toolchains differ.
+
+```bash
+npm ci && npm test && npm run airc -- run examples/sum.air.json
+cargo test --workspace && cargo run -p airc -- version
 ```
 
 ## Docs
 
 | Doc | Contents |
 |-----|----------|
+| [docs/TOOLING.md](docs/TOOLING.md) | Docker-first; TS → Rust host language plan |
 | [docs/VISION.md](docs/VISION.md) | Why AIR exists; systems + AI-first goals |
 | [docs/DESIGN.md](docs/DESIGN.md) | Types, memory, profiles, lowering, traits/vtables |
 | [docs/AI_NATIVE.md](docs/AI_NATIVE.md) | Memory, errors, process/shell, capabilities, DI/mocks |
@@ -35,7 +57,7 @@ npm run airc -- version
 | [docs/PHASE1_DECISIONS.md](docs/PHASE1_DECISIONS.md) | Overflow, main exit, diagnostics, interpreter |
 | [docs/CONCURRENCY.md](docs/CONCURRENCY.md) | Hosted tasks/channels + Alloc |
 | [docs/EXAMPLES.md](docs/EXAMPLES.md) | air-format v0 example suite |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Typed bootstrap → native/freestanding → GP growth |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Bootstrap → Rust parity → native/freestanding |
 
 ## Goals
 
@@ -47,7 +69,7 @@ npm run airc -- version
 
 ## Contributing
 
-PR-only to `main` (no `develop`, no direct merges). See [CONTRIBUTING.md](CONTRIBUTING.md).
+PR-only to `main` (no `develop`, no direct merges). See [CONTRIBUTING.md](CONTRIBUTING.md). Prefer Docker for builds.
 
 ## License
 
