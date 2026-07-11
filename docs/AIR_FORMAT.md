@@ -187,7 +187,7 @@ Mismatched widths require `["as", ty, expr]` first.
 | `ok` / `err` | Construct `Result` values: `["call", "ok", v]`, `["call", "err", e]` |
 | `checked_add` / `checked_sub` / `checked_mul` / `checked_div` | `i32 × i32 → Result[i32, str]`; `err` on overflow or div-by-zero |
 | `aget` | `aget(arr, idx)` element load for `[T; N]` (OOB: interpreter abort in v0) |
-| `aset` | `aset(arr, idx, v)` element store (arrays are mutable places in v0 locals) |
+| `aset` | `aset(arr, idx, v)` element store; v0 first arg must be `["var", name]`; returns `i32` `0` |
 
 ## Function pointer / vtable values (shape only)
 

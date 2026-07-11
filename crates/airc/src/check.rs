@@ -314,6 +314,21 @@ fn check_expr(
                     diags.push(err("type.call", "aget(array, idx)"));
                     None
                 }
+                "aset" => {
+                    if arg_tys.len() == 3 {
+                        if let Some(arr) = arg_tys[0].as_array() {
+                            if arr.first().and_then(|x| x.as_str()) == Some("array")
+                                && arr.len() >= 2
+                                && arg_tys[1] == Value::String("i32".into())
+                                && ty_eq(&arr[1], &arg_tys[2])
+                            {
+                                return Some(Value::String("i32".into()));
+                            }
+                        }
+                    }
+                    diags.push(err("type.call", "aset(array, idx, value)"));
+                    None
+                }
                 other => {
                     let f = fns.get(other);
                     let Some(f) = f else {

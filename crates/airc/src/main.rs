@@ -201,4 +201,9 @@ mod tests {
             other => panic!("{other:?}"),
         }
     }
+
+    #[test]
+    fn aset_then_aget_is_nine() {
+        assert_eq!(run_i32("examples/aset.air.json"), 9);
+    }
 }

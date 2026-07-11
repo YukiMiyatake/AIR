@@ -96,6 +96,20 @@ function evalExpr(e: Expr, env: Map<string, AirValue>, fns: Map<string, FnItem>)
     case "call": {
       const callee = e[1];
       if (typeof callee !== "string") throw new Error("runtime: callee");
+      if (callee === "aset") {
+        const place = e[2] as Expr;
+        if (!Array.isArray(place) || place[0] !== "var" || typeof place[1] !== "string") {
+          throw new Error('runtime.aset: place must be ["var", name]');
+        }
+        const name = place[1];
+        const idx = asI32(evalExpr(e[3] as Expr, env, fns));
+        const val = evalExpr(e[4] as Expr, env, fns);
+        const slot = env.get(name);
+        if (!slot || slot.tag !== "array") throw new Error("runtime.aset");
+        if (idx < 0 || idx >= slot.elems.length) throw new Error("runtime.oob");
+        slot.elems[idx] = val;
+        return { tag: "i32", v: 0 };
+      }
       const args = (e.slice(2) as Expr[]).map((a) => evalExpr(a, env, fns));
       if (callee === "+") return { tag: "i32", v: (asI32(args[0]!) + asI32(args[1]!)) | 0 };
       if (callee === "-") return { tag: "i32", v: (asI32(args[0]!) - asI32(args[1]!)) | 0 };

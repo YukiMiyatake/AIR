@@ -146,6 +146,27 @@ Builtins (see [PHASE1_DECISIONS.md](PHASE1_DECISIONS.md)): `checked_add` / `chec
 
 ---
 
+## Example 6 — Array store (`aset`)
+
+```json
+["mod", "aset_ex",
+  ["fn", "main", [], "i32",
+    ["let", [
+        ["xs", ["array", "i32", 3],
+          ["array_lit", "i32",
+            ["lit", "i32", "1"],
+            ["lit", "i32", "2"],
+            ["lit", "i32", "3"]]]
+      ],
+      ["seq",
+        ["call", "aset", ["var", "xs"], ["lit", "i32", "1"], ["lit", "i32", "9"]],
+        ["call", "aget", ["var", "xs"], ["lit", "i32", "1"]]]]]]
+```
+
+v0: first argument must be a local place `["var", name]`. Returns `i32` `0`. OOB aborts.
+
+---
+
 ## Using these examples
 
 Runnable JSON fixtures live under [`examples/`](../examples/):
@@ -158,6 +179,7 @@ Runnable JSON fixtures live under [`examples/`](../examples/):
 | `hello.air.json` | `0` (prints `hello`) |
 | `bad_move.air.json` | **check fails** (`mem.use_after_move`) |
 | `overflow.air.json` | `-1` (`checked_add` overflow → err arm) |
+| `aset.air.json` | `9` |
 
 ```bash
 docker compose run --rm dev cargo run -p airc -- run examples/arr.air.json
