@@ -1,34 +1,34 @@
 # AIR
 
-**AI Intermediate Representation** — a **general-purpose language** with an AI-first canonical execution IR and VM.
+**AI Intermediate Representation** — a **statically typed, systems-capable general-purpose language** with an AI-first canonical AST.
 
-Authors (agents and tools) emit an explicit AST; a mnemonic view supports human inspection; a VM runs bytecode with effectful operations behind a capability / host boundary. Human text syntax is secondary; machine clarity and token density are primary.
+AIR targets C/C++/Rust-class software, including **freestanding / kernel** profiles. Precise widths (`i32`, `i64`, `f64`, …), **no GC** (ownership + borrowing + explicit allocators/arenas), dual lowering (interpreter for bring-up, **native codegen** for production).
 
-AIR is **not** a short-script DSL. Bootstrap releases may ship a language subset; the product target is general-purpose (modules, closures, concurrency, libraries).
+Human text syntax is not the source of truth; agents and tools emit typed AST. A mnemonic view exists for inspection.
 
-AIR is **not** related to CostGate or MCP tooling. Communication / multi-agent IR is a separate deferred track.
+AIR is unrelated to CostGate / MCP tooling. Communication IR is a separate deferred track.
 
 ## Status
 
-Design documentation (design v0). Language, bytecode, and VM are not implemented yet.
+Design documentation (**design v0.1 systems**). Toolchain not implemented yet. Example sketches still lag the static/systems model.
 
 ## Docs
 
 | Doc | Contents |
 |-----|----------|
-| [docs/VISION.md](docs/VISION.md) | Why AIR exists, audience, non-goals, success metrics |
-| [docs/DESIGN.md](docs/DESIGN.md) | Execution model, AST, mnemonic, bytecode, host API |
-| [docs/EXAMPLES.md](docs/EXAMPLES.md) | AST / mnemonic / bytecode sketches |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Bootstrap → GP core → concurrency |
+| [docs/VISION.md](docs/VISION.md) | Why AIR exists; systems + AI-first goals |
+| [docs/DESIGN.md](docs/DESIGN.md) | Types, memory, profiles, lowering |
+| [docs/AI_NATIVE.md](docs/AI_NATIVE.md) | Memory, errors, process/shell, capabilities (AI-Native defaults) |
+| [docs/EXAMPLES.md](docs/EXAMPLES.md) | Sketches (pending static rewrite) |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Typed bootstrap → native/freestanding → GP growth |
 
 ## Goals
 
-- General-purpose programs, not glue-only scripts
-- Optimize representation for AI generation and understanding, not human sugar syntax
-- Minimize tokens per unit of meaning
-- Treat programs as explicit AST / IR, not text-first syntax
-- Provide a mnemonic view for humans (assembly-like), separate from the canonical form
-- Ship a VM that runs AIR directly, then grow modules, closures, and concurrency
+- Systems-capable general-purpose (including kernel/freestanding)
+- Static typing with precise numeric and pointer types
+- Explicit memory: ownership/borrow + allocators/arenas (no default GC)
+- AI-first canonical AST and token density
+- Native compilation path; interpreter only for bring-up
 
 ## Contributing
 

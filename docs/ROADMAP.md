@@ -1,74 +1,56 @@
 # AIR Roadmap
 
-Phased plan toward a **general-purpose** AIR. Early phases are a **bootstrap subset**, not a permanent “scripting-only” product.
-
-Communication / multi-agent IR remains a separate later track.
+Phased plan toward a **statically typed, systems-capable** AIR (userland + freestanding/kernel). Early phases bootstrap a subset; native + freestanding are first-class goals, not afterthoughts.
 
 ## Phase 0 — Docs (current)
 
-- [VISION.md](VISION.md) — general-purpose + AI-first representation
-- [DESIGN.md](DESIGN.md) — execution model; bootstrap vs target
-- [EXAMPLES.md](EXAMPLES.md) — paired AST / mnemonic / bytecode sketches
+- [VISION.md](VISION.md) — systems GP + AI-first AST
+- [DESIGN.md](DESIGN.md) — static types, ownership+allocators, profiles
+- [AI_NATIVE.md](AI_NATIVE.md) — errors, process/shell, capabilities, concurrency defaults
+- [EXAMPLES.md](EXAMPLES.md) — **needs rewrite** for static/systems model
 - This roadmap
 
-Deliverable: design baseline (design v0). No runtime yet.
+## Phase 1 — Typed bootstrap
 
-## Phase 1 — Bootstrap VM
+- Typed AST schema (`i32`/`i64`/`f64`/…, structs, `Result`)
+- Typechecker (no execution of ill-typed programs)
+- Ownership/move + lexical borrows (minimal lifetime system)
+- Explicit `Alloc` / arena parameters for any heap use
+- Interpreter for typed subset (bring-up only)
+- Rewrite example suite to static types
 
-Minimum executable core (subset of the language):
+Exit criteria: ill-typed and obvious UAF/move errors fail at check time; freestanding-shaped examples use only explicit allocators.
 
-- Parse / validate canonical AST
-- Compile AST → bytecode
-- Execute `main`: arithmetic, compare, `seq` / `if` / `loop` / `break` / `return` / `call` / `set!`
-- Locals via slots; lists + `len` / `get` / `set` / `push`
-- Result tags `ok` / `err` (no exceptions)
-- Stub host/capabilities: at least `print`; allowlist + audit log
-- Mnemonic projector with round-trip tests on the example suite
-- Single task only (concurrency not in this phase)
+## Phase 2 — Native + freestanding
 
-Exit criteria: examples in [EXAMPLES.md](EXAMPLES.md) run; capability calls appear in an audit log.
+- Native codegen path (backend TBD: LLVM / Cranelift / custom)
+- `freestanding` profile: no GC, no hosted I/O runtime
+- Target intrinsics sketch (atomics, volatile MMIO, asm) behind `unsafe`
+- Agent loop: generate → type/borrow diagnostics → patch
 
-## Phase 2 — Agent + developer loop
+Exit criteria: at least one freestanding binary (e.g. bare demo or kernel module sketch) built without hosted runtime.
 
-- “Generate/edit AST → run → structured diagnostics → patch” cycle
-- Stable machine-readable diagnostics
-- Token-density measurement on a suite that includes **non-trivial** programs (not only micro-scripts)
+## Phase 3 — Language core growth
 
-Exit criteria: an agent or scripted stand-in can iterate to a passing run without human syntax repair.
+- Modules / imports
+- Generics (monomorphization)
+- Closures under ownership rules
+- Richer stdlib for `std` profile (collections on allocators)
+- Deeper borrow/lifetime expressiveness as needed
 
-## Phase 3 — General-purpose language core
+## Phase 4 — Concurrency
 
-Language features expected of a real GP language:
+- Hosted: lightweight tasks + channels
+- Freestanding: documented atomics / interrupt model
+- Synchronization types
 
-- Multi-file modules / imports
-- **Closures and lambdas** (upvalues)
-- Richer standard library surface (still capability-backed I/O)
-- Optional static checks (not a full static-typing product yet)
+## Phase 5 — Communication IR (separate)
 
-Exit criteria: express common library patterns without encoding everything as indexed loops + top-level fns only.
-
-## Phase 4 — Concurrency and performance
-
-Required for GP workloads where speed and latency matter:
-
-- **Lightweight tasks** (goroutine-like) with **M:N** scheduling
-- **Channels** (and select-style receive) as the primary cross-task communication
-- Memory / sharing rules documented (start restrictive)
-- Runtime performance work as needed (allocator, later JIT/GC productization)
-
-Exit criteria: parallel CPU- and latency-sensitive examples are expressible **in AIR**, not only by shelling out to a host “run this thread pool” escape hatch.
-
-## Phase 5 — Communication IR (deferred, separate)
-
-Separate design document when started. Not part of the execution language core.
-
-Until then: do not conflate multi-agent protocol design with the VM.
+Deferred; do not conflate with the systems language core.
 
 ## Versioning
 
 | Label | Meaning |
 |-------|---------|
-| design v0 | Current docs (GP identity clarified) |
-| air-format v0 | First frozen AST + bytecode when Phase 1 ships |
-
-Incompatible design changes before `air-format v0`: update DESIGN, note here, keep examples aligned.
+| design v0.1 systems | Static types, no GC, kernel/freestanding goal |
+| air-format v0 | First frozen typed AST when Phase 1 schema stabilizes |

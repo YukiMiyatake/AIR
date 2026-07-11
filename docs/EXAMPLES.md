@@ -1,8 +1,12 @@
 # AIR Examples
 
-Same programs shown as **canonical AST**, **mnemonic view**, and a **bytecode sketch**. These are informative sketches until the bootstrap compiler exists; they must stay consistent with [DESIGN.md](DESIGN.md).
+> **Status:** These sketches still reflect an older **dynamic / `num` / GC-list** draft.  
+> Current design is **static types + ownership/allocators + freestanding/kernel** — see [DESIGN.md](DESIGN.md) and [VISION.md](VISION.md).  
+> This file will be rewritten in Phase 1 (typed example suite).
 
-These examples are small for clarity. They do **not** imply AIR is limited to short scripts — see [VISION.md](VISION.md) (general-purpose language).
+Same programs shown as **canonical AST**, **mnemonic view**, and a **bytecode sketch** (legacy). Treat structure (`seq` / `if` / `loop`) as informative only; types and memory ops are outdated.
+
+These examples are small for clarity. They do **not** imply AIR is limited to short scripts.
 
 ## Example 1 — Sum 1..n
 
