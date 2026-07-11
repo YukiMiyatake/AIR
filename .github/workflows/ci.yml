@@ -34,6 +34,12 @@ jobs:
           set -e
           # sum.air.json returns 55; that is the process status (PHASE1_DECISIONS), not a CLI failure.
           test "$code" -eq 55
+          # ownership negative: use-after-move must fail check
+          set +e
+          npm run airc -- check examples/bad_move.air.json
+          code=$?
+          set -e
+          test "$code" -ne 0
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -49,6 +55,11 @@ jobs:
           code=$?
           set -e
           test "$code" -eq 55
+          set +e
+          cargo run -p airc -- check examples/bad_move.air.json
+          code=$?
+          set -e
+          test "$code" -ne 0
 
   docker:
     runs-on: ubuntu-latest

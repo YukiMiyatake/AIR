@@ -29,6 +29,20 @@ function isCopy(t: Ty): boolean {
 
 type Env = Map<string, { ty: Ty; moved: boolean }>;
 
+function cloneEnv(env: Env): Env {
+  const out: Env = new Map();
+  for (const [k, v] of env) out.set(k, { ty: v.ty, moved: v.moved });
+  return out;
+}
+
+function mergeMoved(dst: Env, a: Env, b: Env): void {
+  for (const [name, slot] of dst) {
+    const ma = a.get(name)?.moved ?? slot.moved;
+    const mb = b.get(name)?.moved ?? slot.moved;
+    slot.moved = ma || mb;
+  }
+}
+
 function err(message: string, code: string): Diagnostic {
   return { severity: "error", code, message };
 }
@@ -73,7 +87,7 @@ function checkExpr(
       return last ?? "i32";
     }
     case "let": {
-      const child = new Map(env);
+      const child = cloneEnv(env);
       for (const [name, tyAnno, init] of e[1]) {
         const it = checkExpr(init, child, diags, fns, breakTy);
         if (!it) return null;
@@ -94,7 +108,7 @@ function checkExpr(
       const it = checkExpr(e[2], env, diags, fns, breakTy);
       if (!it) return null;
       if (!tyEq(slot.ty, it)) {
-        diags.push(err(`set! type mismatch for ${e[1]}`, "type.mismatch"));
+        diags.push(err(`set! type mismatch for ${e[1]}`, "mem.type_mismatch"));
         return null;
       }
       slot.moved = false;
@@ -107,13 +121,12 @@ function checkExpr(
         diags.push(err("if cond must be bool", "type.mismatch"));
         return null;
       }
-      const t = checkExpr(e[2], env, diags, fns, breakTy);
-      const f = checkExpr(e[3], env, diags, fns, breakTy);
+      const envThen = cloneEnv(env);
+      const t = checkExpr(e[2], envThen, diags, fns, breakTy);
+      const envElse = cloneEnv(env);
+      const f = checkExpr(e[3], envElse, diags, fns, breakTy);
       if (!t || !f) return null;
-      if (!tyEq(t, f)) {
-        // allow never-like via break only on one side: if either is never from break... Phase1: require match
-        // For loop bodies, break returns a synthetic never — handle break specially
-      }
+      mergeMoved(env, envThen, envElse);
       if (t === "never") return f;
       if (f === "never") return t;
       if (!tyEq(t, f)) {
@@ -200,9 +213,10 @@ function checkExpr(
       const scr = checkExpr(e[1], env, diags, fns, breakTy);
       if (!scr) return null;
       let out: Ty | null = null;
+      const armEnvs: Env[] = [];
       for (let i = 2; i < e.length; i++) {
         const arm = e[i] as [unknown, Expr];
-        const child = new Map(env);
+        const child = cloneEnv(env);
         const pat = arm[0];
         if (Array.isArray(pat) && (pat[0] === "ok" || pat[0] === "err") && typeof pat[1] === "string") {
           if (!Array.isArray(scr) || scr[0] !== "result") {
@@ -216,11 +230,18 @@ function checkExpr(
         }
         const bt = checkExpr(arm[1], child, diags, fns, breakTy);
         if (!bt) return null;
+        armEnvs.push(child);
         if (out && !tyEq(out, bt)) {
           diags.push(err("match arms type mismatch", "type.mismatch"));
           return null;
         }
         out = bt;
+      }
+      if (armEnvs.length >= 2) {
+        mergeMoved(env, armEnvs[0]!, armEnvs[1]!);
+        for (let i = 2; i < armEnvs.length; i++) {
+          mergeMoved(env, env, armEnvs[i]!);
+        }
       }
       return out;
     }

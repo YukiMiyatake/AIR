@@ -159,4 +159,14 @@ mod tests {
     fn hello_returns_zero() {
         assert_eq!(run_i32("examples/hello.air.json"), 0);
     }
+
+    #[test]
+    fn bad_move_is_rejected() {
+        let module = parse_module_json(&load("examples/bad_move.air.json")).expect("parse");
+        let err = typecheck_module(&module).expect_err("should fail ownership");
+        assert!(
+            err.iter().any(|d| d.code == "mem.use_after_move"),
+            "expected mem.use_after_move, got {err:?}"
+        );
+    }
 }
