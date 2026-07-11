@@ -374,6 +374,9 @@ struct HostImports {
     freestanding: bool,
     puts: Option<FuncId>,
     str_id: u32,
+    /// AIR user functions declared in this module (`name` → Cranelift `FuncId`).
+    user_fns: HashMap<String, FuncId>,
+    user_fn_arity: HashMap<String, usize>,
 }
 
 fn ensure_puts(clif: &mut impl ClifModule, host: &mut HostImports) -> Result<FuncId, Vec<Diagnostic>> {
@@ -435,8 +438,11 @@ fn lower_all_fns(
         freestanding,
         puts: None,
         str_id: 0,
+        user_fns: HashMap::new(),
+        user_fn_arity: HashMap::new(),
     };
 
+    // Pass 1: declare every function so bodies may call each other (incl. forward refs).
     for f in fns {
         let arr = f.as_array().unwrap();
         let name = arr[1].as_str().unwrap();
@@ -471,9 +477,30 @@ fn lower_all_fns(
         let id = clif
             .declare_function(name, Linkage::Export, &sig)
             .map_err(|e| vec![err("codegen.error", format!("declare `{name}`: {e}"))])?;
+        if host.user_fns.insert(name.to_string(), id).is_some() {
+            return Err(vec![err(
+                "codegen.error",
+                format!("duplicate fn `{name}`"),
+            )]);
+        }
+        host.user_fn_arity.insert(name.to_string(), params.len());
         if name == "main" && params.is_empty() {
             main_id = Some(id);
         }
+    }
+
+    // Pass 2: lower and define bodies.
+    for f in fns {
+        let arr = f.as_array().unwrap();
+        let name = arr[1].as_str().unwrap();
+        let params = arr[2].as_array().unwrap();
+        let id = host.user_fns[name];
+
+        let mut sig = clif.make_signature();
+        for _ in params {
+            sig.params.push(AbiParam::new(types::I32));
+        }
+        sig.returns.push(AbiParam::new(types::I32));
 
         ctx.func.signature = sig;
         ctx.func.name = UserFuncName::user(0, id.as_u32());
@@ -938,10 +965,37 @@ fn lower_call(
             let v = builder.ins().icmp(cc, args[0].0, args[1].0);
             Ok(Lowered::Value(v, AirTy::Bool))
         }
-        other => Err(vec![err(
-            "codegen.unsupported",
-            format!("call `{other}` not in Cranelift MVP (no user fns / caps yet)"),
-        )]),
+        other => {
+            let Some(&fid) = host.user_fns.get(other) else {
+                return Err(vec![err(
+                    "codegen.unsupported",
+                    format!("call `{other}` not in Cranelift MVP"),
+                )]);
+            };
+            let arity = host.user_fn_arity[other];
+            if args.len() != arity {
+                return Err(vec![err(
+                    "codegen.error",
+                    format!(
+                        "call `{other}`: expected {arity} args, got {}",
+                        args.len()
+                    ),
+                )]);
+            }
+            for (_, ty) in &args {
+                if *ty != AirTy::I32 {
+                    return Err(vec![err(
+                        "codegen.error",
+                        format!("call `{other}`: args must be i32"),
+                    )]);
+                }
+            }
+            let fref = clif.declare_func_in_func(fid, &mut builder.func);
+            let arg_vals: Vec<_> = args.iter().map(|(v, _)| *v).collect();
+            let call = builder.ins().call(fref, &arg_vals);
+            let ret = builder.inst_results(call)[0];
+            Ok(Lowered::Value(ret, AirTy::I32))
+        }
     }
 }
 
@@ -1057,6 +1111,17 @@ mod tests {
             err.iter().any(|d| d.code == "codegen.freestanding"),
             "{err:?}"
         );
+    }
+
+    #[test]
+    fn compile_add_user_fn() {
+        let text = std::fs::read_to_string("examples/add.air")
+            .or_else(|_| std::fs::read_to_string("../../examples/add.air"))
+            .expect("add.air");
+        let module = parse_module_file("examples/add.air", &text).expect("parse");
+        typecheck_module(&module).expect("check");
+        let out = compile_module(&module, &CompileOptions::default()).expect("compile");
+        assert_eq!(out.main, Some(42));
     }
 
     #[test]

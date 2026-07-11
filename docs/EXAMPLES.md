@@ -278,6 +278,7 @@ Primary fixtures are **S-expr** (`.air`). JSON (`.air.json`) is **legacy parity*
 | `option.air` | `42` (`enum` + `variant` match) |
 | `pair.air` | `7` (tuple enum payload) |
 | `fset.air` | `10` (`fset` field store) |
+| `add.air` | `42` (user `fn` call; Cranelift codegen) |
 | `bad_enum_match.air` | **check fails** (`type.match` non-exhaustive) |
 
 ```bash
