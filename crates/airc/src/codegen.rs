@@ -2,7 +2,7 @@
 //!
 //! See docs/CODEGEN.md. Interpreter (`airc run`) remains the general execution path;
 //! `airc compile` JIT-runs parameterless `main` when present, and can emit a `.o`
-//! or link a hosted binary via `-o`.
+//! or link a hosted / freestanding binary via `-o`.
 
 use crate::diag::{err, tag, Diagnostic};
 use crate::parse::{fns_in_module, Module};
@@ -20,6 +20,15 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
+/// Options for `compile_module`.
+#[derive(Debug, Clone, Default)]
+pub struct CompileOptions<'a> {
+    /// Write a `.o` or linked binary to this path.
+    pub output: Option<&'a Path>,
+    /// Link without libc: assemble `_start` and use `cc -nostdlib -static`.
+    pub freestanding: bool,
+}
+
 /// Result of a successful `compile` (native / JIT path).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompileOutcome {
@@ -27,6 +36,8 @@ pub struct CompileOutcome {
     pub main: Option<i32>,
     /// Path written when `-o` was requested (object or linked binary).
     pub output: Option<PathBuf>,
+    /// Whether the artifact used the freestanding CRT0.
+    pub freestanding: bool,
 }
 
 /// What `-o` should produce.
@@ -34,7 +45,7 @@ pub struct CompileOutcome {
 pub enum CompileOutputKind {
     /// Relocatable object (`.o`).
     Object,
-    /// Hosted executable linked with the system C compiler (`cc`).
+    /// Executable linked with the system C compiler (`cc`).
     Executable,
 }
 
@@ -84,11 +95,18 @@ enum Lowered {
 
 /// After a successful typecheck, lower supported functions to Cranelift IR,
 /// JIT-compile them, call parameterless `main` when present, and optionally
-/// write an object file or hosted executable to `output`.
+/// write an object file or hosted / freestanding executable to `opts.output`.
 pub fn compile_module(
     module: &Module,
-    output: Option<&Path>,
+    opts: &CompileOptions<'_>,
 ) -> Result<CompileOutcome, Vec<Diagnostic>> {
+    if opts.freestanding && opts.output.is_none() {
+        return Err(vec![err(
+            "codegen.freestanding",
+            "--freestanding requires `-o` (object or binary path)",
+        )]);
+    }
+
     let isa = host_isa()?;
     let fns = fns_in_module(module);
     if fns.is_empty() {
@@ -114,19 +132,34 @@ pub fn compile_module(
         None
     };
 
-    let written = if let Some(path) = output {
+    if opts.freestanding && main.is_none() {
+        return Err(vec![err(
+            "codegen.freestanding",
+            "freestanding link needs parameterless `main () i32`",
+        )]);
+    }
+
+    let written = if let Some(path) = opts.output {
         let bytes = emit_object_bytes(module, isa)?;
         match CompileOutputKind::infer(path) {
             CompileOutputKind::Object => {
-                std::fs::write(path, &bytes).map_err(|e| {
-                    vec![err(
-                        "codegen.error",
-                        format!("write {}: {e}", path.display()),
-                    )]
-                })?;
+                if opts.freestanding {
+                    write_freestanding_object(&bytes, path)?;
+                } else {
+                    std::fs::write(path, &bytes).map_err(|e| {
+                        vec![err(
+                            "codegen.error",
+                            format!("write {}: {e}", path.display()),
+                        )]
+                    })?;
+                }
             }
             CompileOutputKind::Executable => {
-                link_hosted_executable(&bytes, path)?;
+                if opts.freestanding {
+                    link_freestanding_executable(&bytes, path)?;
+                } else {
+                    link_hosted_executable(&bytes, path)?;
+                }
             }
         }
         Some(path.to_path_buf())
@@ -137,6 +170,7 @@ pub fn compile_module(
     Ok(CompileOutcome {
         main,
         output: written,
+        freestanding: opts.freestanding,
     })
 }
 
@@ -163,15 +197,68 @@ pub fn emit_object_bytes(
         .map_err(|e| vec![err("codegen.error", format!("object write: {e}"))])
 }
 
-fn link_hosted_executable(object_bytes: &[u8], out: &Path) -> Result<(), Vec<Diagnostic>> {
-    let dir = std::env::temp_dir();
-    let obj_path = dir.join(format!(
-        "airc-{}-{}.o",
+fn freestanding_crt0_asm() -> Result<&'static str, Vec<Diagnostic>> {
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    {
+        return Ok(include_str!("../runtime/linux-x86_64/_start.S"));
+    }
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    {
+        return Ok(include_str!("../runtime/linux-aarch64/_start.S"));
+    }
+    #[cfg(not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
+    {
+        Err(vec![err(
+            "codegen.freestanding",
+            "freestanding CRT0 is only available on Linux x86_64 / aarch64 hosts",
+        )])
+    }
+}
+
+fn temp_stem(out: &Path) -> String {
+    format!(
+        "airc-{}-{}",
         std::process::id(),
         out.file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("out")
-    ));
+    )
+}
+
+fn assemble_crt0(dir: &Path) -> Result<PathBuf, Vec<Diagnostic>> {
+    let asm = freestanding_crt0_asm()?;
+    let tag = format!("airc-{}-crt0", std::process::id());
+    let src = dir.join(format!("{tag}.S"));
+    let obj = dir.join(format!("{tag}.o"));
+    std::fs::write(&src, asm).map_err(|e| {
+        vec![err(
+            "codegen.error",
+            format!("write _start.S: {e}"),
+        )]
+    })?;
+    let status = Command::new("cc")
+        .arg("-c")
+        .arg("-o")
+        .arg(&obj)
+        .arg(&src)
+        .status()
+        .map_err(|e| vec![err("codegen.error", format!("spawn cc -c _start: {e}"))])?;
+    let _ = std::fs::remove_file(&src);
+    if !status.success() {
+        return Err(vec![err(
+            "codegen.error",
+            "cc failed assembling freestanding _start.S",
+        )]);
+    }
+    Ok(obj)
+}
+
+fn link_hosted_executable(object_bytes: &[u8], out: &Path) -> Result<(), Vec<Diagnostic>> {
+    let dir = std::env::temp_dir();
+    let obj_path = dir.join(format!("{}.o", temp_stem(out)));
     std::fs::write(&obj_path, object_bytes).map_err(|e| {
         vec![err(
             "codegen.error",
@@ -200,6 +287,82 @@ fn link_hosted_executable(object_bytes: &[u8], out: &Path) -> Result<(), Vec<Dia
                 "cc failed linking {} (is a C toolchain installed?)",
                 out.display()
             ),
+        )]);
+    }
+    Ok(())
+}
+
+fn link_freestanding_executable(object_bytes: &[u8], out: &Path) -> Result<(), Vec<Diagnostic>> {
+    let dir = std::env::temp_dir();
+    let air_obj = dir.join(format!("{}.o", temp_stem(out)));
+    std::fs::write(&air_obj, object_bytes).map_err(|e| {
+        vec![err(
+            "codegen.error",
+            format!("write temp object: {e}"),
+        )]
+    })?;
+    let crt0 = assemble_crt0(&dir)?;
+
+    let status = Command::new("cc")
+        .args(["-nostdlib", "-static", "-no-pie", "-o"])
+        .arg(out)
+        .arg(&air_obj)
+        .arg(&crt0)
+        .status()
+        .map_err(|e| {
+            vec![err(
+                "codegen.error",
+                format!("spawn cc freestanding link: {e}"),
+            )]
+        })?;
+
+    let _ = std::fs::remove_file(&air_obj);
+    let _ = std::fs::remove_file(&crt0);
+
+    if !status.success() {
+        return Err(vec![err(
+            "codegen.error",
+            format!(
+                "cc -nostdlib failed linking {} (static freestanding)",
+                out.display()
+            ),
+        )]);
+    }
+    Ok(())
+}
+
+/// Merge AIR object + freestanding `_start` into one relocatable `.o`.
+fn write_freestanding_object(object_bytes: &[u8], out: &Path) -> Result<(), Vec<Diagnostic>> {
+    let dir = std::env::temp_dir();
+    let air_obj = dir.join(format!("{}-air.o", temp_stem(out)));
+    std::fs::write(&air_obj, object_bytes).map_err(|e| {
+        vec![err(
+            "codegen.error",
+            format!("write temp object: {e}"),
+        )]
+    })?;
+    let crt0 = assemble_crt0(&dir)?;
+
+    let status = Command::new("cc")
+        .args(["-nostdlib", "-r", "-o"])
+        .arg(out)
+        .arg(&air_obj)
+        .arg(&crt0)
+        .status()
+        .map_err(|e| {
+            vec![err(
+                "codegen.error",
+                format!("spawn cc -r freestanding object: {e}"),
+            )]
+        })?;
+
+    let _ = std::fs::remove_file(&air_obj);
+    let _ = std::fs::remove_file(&crt0);
+
+    if !status.success() {
+        return Err(vec![err(
+            "codegen.error",
+            format!("cc -r failed writing freestanding {}", out.display()),
         )]);
     }
     Ok(())
@@ -697,9 +860,10 @@ mod tests {
     #[test]
     fn compile_sum_with_cranelift() {
         let module = load_sum();
-        let out = compile_module(&module, None).expect("compile");
+        let out = compile_module(&module, &CompileOptions::default()).expect("compile");
         assert_eq!(out.main, Some(55));
         assert!(out.output.is_none());
+        assert!(!out.freestanding);
     }
 
     #[test]
@@ -707,7 +871,14 @@ mod tests {
         let module = load_sum();
         let dir = std::env::temp_dir();
         let obj = dir.join(format!("airc-sum-test-{}.o", std::process::id()));
-        let out = compile_module(&module, Some(&obj)).expect("compile");
+        let out = compile_module(
+            &module,
+            &CompileOptions {
+                output: Some(&obj),
+                freestanding: false,
+            },
+        )
+        .expect("compile");
         assert_eq!(out.main, Some(55));
         assert_eq!(out.output.as_deref(), Some(obj.as_path()));
         let meta = std::fs::metadata(&obj).expect("object exists");
@@ -720,11 +891,68 @@ mod tests {
         let module = load_sum();
         let dir = std::env::temp_dir();
         let bin = dir.join(format!("airc-sum-bin-{}", std::process::id()));
-        let out = compile_module(&module, Some(&bin)).expect("link");
+        let out = compile_module(
+            &module,
+            &CompileOptions {
+                output: Some(&bin),
+                freestanding: false,
+            },
+        )
+        .expect("link");
         assert_eq!(out.main, Some(55));
         let status = Command::new(&bin).status().expect("run binary");
         assert_eq!(status.code(), Some(55));
         let _ = std::fs::remove_file(&bin);
+    }
+
+    #[test]
+    fn compile_sum_freestanding_binary() {
+        let module = load_sum();
+        let dir = std::env::temp_dir();
+        let bin = dir.join(format!("airc-sum-free-{}", std::process::id()));
+        let out = compile_module(
+            &module,
+            &CompileOptions {
+                output: Some(&bin),
+                freestanding: true,
+            },
+        )
+        .expect("freestanding link");
+        assert_eq!(out.main, Some(55));
+        assert!(out.freestanding);
+        let status = Command::new(&bin).status().expect("run freestanding");
+        assert_eq!(status.code(), Some(55));
+        // Should not need a dynamic loader / libc.
+        let ldd = Command::new("ldd").arg(&bin).output().expect("ldd");
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&ldd.stdout),
+            String::from_utf8_lossy(&ldd.stderr)
+        );
+        assert!(
+            text.contains("not a dynamic executable")
+                || text.contains("statically linked")
+                || !ldd.status.success(),
+            "expected static binary, ldd said: {text}"
+        );
+        let _ = std::fs::remove_file(&bin);
+    }
+
+    #[test]
+    fn freestanding_requires_output() {
+        let module = load_sum();
+        let err = compile_module(
+            &module,
+            &CompileOptions {
+                output: None,
+                freestanding: true,
+            },
+        )
+        .expect_err("needs -o");
+        assert!(
+            err.iter().any(|d| d.code == "codegen.freestanding"),
+            "{err:?}"
+        );
     }
 
     #[test]
@@ -734,7 +962,8 @@ mod tests {
             .expect("hello.air");
         let module = parse_module_file("examples/hello.air", &text).expect("parse");
         typecheck_module(&module).expect("check");
-        let err = compile_module(&module, None).expect_err("cap.print unsupported");
+        let err = compile_module(&module, &CompileOptions::default())
+            .expect_err("cap.print unsupported");
         assert!(
             err.iter().any(|d| d.code == "codegen.unsupported"),
             "{err:?}"

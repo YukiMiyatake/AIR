@@ -1,6 +1,6 @@
 # AIR Codegen (Phase 2)
 
-Status: **Cranelift hosted MVP** for the `sum`-class subset — JIT-run `main`, emit `.o`, or link a hosted binary with `cc`. Interpreter remains the general execution path (`airc run`).
+Status: **Cranelift hosted + freestanding MVP** for the `sum`-class subset — JIT-run `main`, emit `.o`, link hosted (`cc`) or freestanding (`_start` + `-nostdlib -static`) binaries. Interpreter remains the general execution path (`airc run`).
 
 ## Goal
 
@@ -27,7 +27,9 @@ typed AST
    ▼
 Cranelift IR
    ├─ JITModule → call parameterless main() -> i32
-   └─ ObjectModule → .o  →  (optional) cc → hosted binary
+   └─ ObjectModule → .o
+         ├─ hosted:     cc → binary (CRT)
+         └─ freestanding: assemble _start.S → cc -nostdlib -static -no-pie
 ```
 
 `airc run` stays the AST interpreter. `airc compile` is the native path; it must refuse ill-typed / ownership-failing modules (same checker as `check`).
@@ -40,49 +42,55 @@ Cranelift IR
 - `lit` / `var` / `seq` / `let` / `set!` / `if` / `loop` / `break` / `return`
 - Builtin calls: `+ - * /` and `<= < > >= == !=` on `i32` (wrapping arith, matching the interpreter)
 - JIT-run parameterless `main`
-- `-o file.o` → relocatable object; other `-o path` → temp `.o` + `cc -o path`
+- `-o file.o` → relocatable object; other `-o path` → hosted binary via `cc`
+- `--freestanding -o path` → Linux x86_64 / aarch64 `_start` (call `main`, `SYS_exit`) + static link without libc
 
 **Out (later)**
 
-- `cap.*`, user fn calls, `match`, arrays, `struct` / `enum`, strings
-- Freestanding `_start` / no-libc link (sketch below)
+- `cap.*` native glue, user fn calls, `match`, arrays, `struct` / `enum`, strings
+- Freestanding on non-Linux hosts
 - Full LLVM path; generics / traits; tasks / channels
 
-Unsupported constructs yield `codegen.unsupported`. Cranelift failures yield `codegen.error`.
+Unsupported constructs yield `codegen.unsupported`. Cranelift failures yield `codegen.error`. Freestanding misuse yields `codegen.freestanding`.
 
-## Freestanding `_start` (sketch)
+## Freestanding `_start`
 
-Hosted `main` is a C ABI `() -> i32` symbol linked with the platform CRT via `cc`.
+Sources live under `crates/airc/runtime/`:
 
-Freestanding (no hosted I/O, no CRT) would instead:
+| Host | File | Exit |
+|------|------|------|
+| Linux x86_64 | `linux-x86_64/_start.S` | `SYS_exit` (60) |
+| Linux aarch64 | `linux-aarch64/_start.S` | `SYS_exit` (93) |
 
-1. Reject `cap.*` at compile time (already true for the MVP subset).
-2. Emit a symbol `_start` (or target-specific entry) that:
-   - sets up a stack if the loader does not,
-   - calls AIR `main` (or an explicit entry fn),
-   - exits via a raw syscall / QEMU semihosting / `hlt` loop — **not** `libc` `exit`.
-3. Link with `-nostdlib -static` (and a tiny asm/crt0 if required), without depending on `cap.print`.
+Behavior:
 
-This PR does **not** implement freestanding linking; the hosted `-o` path remains CRT-based. Exit criterion for Phase 2 freestanding is still open.
+1. Require parameterless `main () i32` (same as JIT demo).
+2. Reject `cap.*` via the existing MVP subset (no hosted I/O in freestanding artifacts).
+3. Assemble CRT0 with `cc -c`, then:
+   - executable: `cc -nostdlib -static -no-pie -o out air.o _start.o`
+   - object: `cc -nostdlib -r -o out.o air.o _start.o`
+
+`--freestanding` without `-o` is an error.
 
 ## CLI
 
 ```bash
 airc compile <file.air|.airb> [--diag=text|json]
 airc compile <file.air|.airb> -o out.o
-airc compile <file.air|.airb> -o out      # hosted binary via cc
+airc compile <file.air|.airb> -o out
+airc compile <file.air|.airb> --freestanding -o out
 ```
 
 Examples:
 
 ```text
 ok: compiled module sum (jit main => 55)
-ok: compiled module sum (jit main => 55) -> /tmp/sum.o
 ok: compiled module sum (jit main => 55) -> /tmp/sum
+ok: compiled module sum (jit main => 55) [freestanding] -> /tmp/sum-free
 ```
 
 ## Open questions
 
 1. ~~Object format~~ — `.o` + system `cc` for hosted binaries (done)
 2. Hosted runtime for `cap.print`: thin `libc`/`std` glue vs keep interpreter-only for I/O in MVP?
-3. Freestanding: implement `_start` + `-nostdlib` link next, or keep hosted-only until more of the language lowers?
+3. ~~Freestanding `_start`~~ — Linux x86_64 / aarch64 done; other targets later

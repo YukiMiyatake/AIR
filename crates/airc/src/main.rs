@@ -2,7 +2,7 @@
 
 use airc::{
     ast_digest_hex, ast_eq, compile_module, emit_diags, load_module_path, pack_airb, print_sexpr,
-    print_value, run_module, typecheck_module, unpack_airb, value_to_exit_code,
+    print_value, run_module, typecheck_module, unpack_airb, value_to_exit_code, CompileOptions,
 };
 use std::env;
 use std::fs;
@@ -21,11 +21,12 @@ Usage:
   airc unpack  <file.airb>         # print S-expr
   airc check   <file.air|.airb> [--diag=text|json]
   airc run     <file.air|.airb> [--diag=text|json]
-  airc compile <file.air|.airb> [-o out.o|bin] [--diag=text|json]
+  airc compile <file.air|.airb> [-o out.o|bin] [--freestanding] [--diag=text|json]
 
 Default text encoding is .air (S-expr). .airb is accepted for check/run/fmt/hash/eq/compile.
 .air.json remains accepted for legacy parity.
-Compile: Cranelift JIT (sum-class); -o *.o writes an object, other -o paths link a hosted binary via cc.
+Compile: Cranelift JIT (sum-class); -o *.o writes an object; other -o paths link via cc.
+--freestanding: Linux x86_64/aarch64 CRT0 (_start + SYS_exit), link with -nostdlib -static.
 "
 }
 
@@ -34,6 +35,7 @@ struct Cli {
     files: Vec<String>,
     diag: String,
     output: Option<PathBuf>,
+    freestanding: bool,
 }
 
 fn parse_cli(args: &[String]) -> Result<Cli, String> {
@@ -41,6 +43,7 @@ fn parse_cli(args: &[String]) -> Result<Cli, String> {
     let mut files = Vec::new();
     let mut diag = "text".to_string();
     let mut output = None;
+    let mut freestanding = false;
     let mut i = 0;
     while i < args.len() {
         let a = &args[i];
@@ -50,6 +53,7 @@ fn parse_cli(args: &[String]) -> Result<Cli, String> {
                 files,
                 diag,
                 output,
+                freestanding,
             });
         }
         if let Some(v) = a.strip_prefix("--diag=") {
@@ -57,6 +61,11 @@ fn parse_cli(args: &[String]) -> Result<Cli, String> {
                 return Err(format!("invalid --diag value: {v}"));
             }
             diag = v.to_string();
+            i += 1;
+            continue;
+        }
+        if a == "--freestanding" {
+            freestanding = true;
             i += 1;
             continue;
         }
@@ -87,6 +96,7 @@ fn parse_cli(args: &[String]) -> Result<Cli, String> {
         files,
         diag,
         output,
+        freestanding,
     })
 }
 
@@ -126,6 +136,11 @@ fn main() -> ExitCode {
 
     if cli.output.is_some() && cli.cmd != "compile" {
         eprintln!("`-o` is only valid for `compile`");
+        eprint!("{}", usage());
+        return ExitCode::from(2);
+    }
+    if cli.freestanding && cli.cmd != "compile" {
+        eprintln!("`--freestanding` is only valid for `compile`");
         eprint!("{}", usage());
         return ExitCode::from(2);
     }
@@ -235,12 +250,19 @@ fn main() -> ExitCode {
     }
 
     if cli.cmd == "compile" {
-        match compile_module(&module, cli.output.as_deref()) {
+        let opts = CompileOptions {
+            output: cli.output.as_deref(),
+            freestanding: cli.freestanding,
+        };
+        match compile_module(&module, &opts) {
             Ok(out) => {
                 let mut msg = match out.main {
                     Some(v) => format!("ok: compiled module {} (jit main => {v})", module.name),
                     None => format!("ok: compiled module {}", module.name),
                 };
+                if out.freestanding {
+                    msg.push_str(" [freestanding]");
+                }
                 if let Some(p) = &out.output {
                     msg.push_str(&format!(" -> {}", p.display()));
                 }
