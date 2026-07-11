@@ -33,6 +33,7 @@ jobs:
           test "$code" -ne 0
           out=$(cargo run -q -p airc -- run examples/hello.air)
           printf '%s\n' "$out" | head -n1 | grep -qx 'hello'
+          cargo run -q -p airc -- compile examples/sum.air | grep -F 'jit main => 55'
 
       - uses: actions/setup-node@v4
         with:

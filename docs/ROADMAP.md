@@ -86,7 +86,7 @@ Exit criteria (met):
 
 ## Phase 2 — Native + freestanding
 
-- [CODEGEN.md](CODEGEN.md) — **Cranelift** backend; `sum`-class IR + host ISA compile (in-memory)
+- [CODEGEN.md](CODEGEN.md) — **Cranelift** backend; `sum`-class IR + JIT-run `main`
 - Native codegen path **in Rust airc** (Cranelift MVP first; LLVM optional later)
 - `freestanding` profile: no GC, no hosted I/O runtime (`cap.print` is hosted-only)
 - Target intrinsics sketch (atomics, volatile MMIO, asm) behind `unsafe`
@@ -100,7 +100,8 @@ Near-term:
 |------|-------------|
 | Done | CODEGEN.md + `airc compile` typechecks then stubs |
 | Done | First Cranelift IR for `sum`-class `i32`/`loop` subset |
-| Next | Link hosted binary (or JIT-run `main`); freestanding `_start` sketch |
+| Done | JIT-run parameterless `main` (`sum` → 55) |
+| Next | Link hosted binary / object emit; freestanding `_start` sketch |
 
 ## Phase 3 — Language core growth
 

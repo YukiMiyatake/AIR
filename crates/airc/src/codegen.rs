@@ -1,19 +1,27 @@
 //! Phase 2 Cranelift codegen — `sum`-class i32 / control-flow subset.
 //!
-//! See docs/CODEGEN.md. Interpreter (`airc run`) remains the general execution path.
+//! See docs/CODEGEN.md. Interpreter (`airc run`) remains the general execution path;
+//! `airc compile` JIT-runs parameterless `main` when present.
 
 use crate::diag::{err, tag, Diagnostic};
 use crate::parse::{fns_in_module, Module};
-use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::condcodes::IntCC;
-use cranelift_codegen::ir::{types, AbiParam, BlockArg, Function, InstBuilder, UserFuncName};
+use cranelift_codegen::ir::{types, AbiParam, BlockArg, InstBuilder, UserFuncName};
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_codegen::verifier::verify_function;
-use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
+use cranelift_jit::{JITBuilder, JITModule};
+use cranelift_module::{default_libcall_names, Linkage, Module as ClifModule};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+/// Result of a successful `compile` (native / JIT path).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompileOutcome {
+    /// Value returned by JIT-calling parameterless `main`, if the module defines one.
+    pub main: Option<i32>,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AirTy {
@@ -45,10 +53,11 @@ enum Lowered {
     Unreachable,
 }
 
-/// After a successful typecheck, lower supported functions to Cranelift IR and
-/// compile them with the host ISA (in-memory; no object file yet).
-pub fn compile_module(module: &Module) -> Result<(), Vec<Diagnostic>> {
+/// After a successful typecheck, lower supported functions to Cranelift IR,
+/// JIT-compile them, and call parameterless `main` when present.
+pub fn compile_module(module: &Module) -> Result<CompileOutcome, Vec<Diagnostic>> {
     let isa = host_isa()?;
+    let mut jit = JITModule::new(JITBuilder::with_isa(isa, default_libcall_names()));
     let fns = fns_in_module(module);
     if fns.is_empty() {
         return Err(vec![err(
@@ -58,10 +67,77 @@ pub fn compile_module(module: &Module) -> Result<(), Vec<Diagnostic>> {
     }
 
     let mut fb_ctx = FunctionBuilderContext::new();
-    for (idx, f) in fns.iter().enumerate() {
-        compile_fn(*f, idx as u32, isa.as_ref(), &mut fb_ctx)?;
+    let mut ctx = jit.make_context();
+    let mut main_id = None;
+
+    for f in &fns {
+        let arr = f.as_array().unwrap();
+        let name = arr[1].as_str().unwrap();
+        let params = arr[2].as_array().unwrap();
+        let ret_ty = parse_simple_ty(&arr[3])?;
+        if ret_ty != AirTy::I32 {
+            return Err(vec![err(
+                "codegen.unsupported",
+                format!("fn `{name}`: only i32 return is supported in Cranelift MVP"),
+            )]);
+        }
+
+        let mut sig = jit.make_signature();
+        for p in params {
+            let pa = p.as_array().ok_or_else(|| {
+                vec![err(
+                    "codegen.unsupported",
+                    format!("fn `{name}`: bad param"),
+                )]
+            })?;
+            let pty = parse_simple_ty(&pa[1])?;
+            if pty != AirTy::I32 {
+                return Err(vec![err(
+                    "codegen.unsupported",
+                    format!("fn `{name}`: only i32 params in Cranelift MVP"),
+                )]);
+            }
+            sig.params.push(AbiParam::new(types::I32));
+        }
+        sig.returns.push(AbiParam::new(types::I32));
+
+        let id = jit
+            .declare_function(name, Linkage::Export, &sig)
+            .map_err(|e| vec![err("codegen.error", format!("declare `{name}`: {e}"))])?;
+        if name == "main" && params.is_empty() {
+            main_id = Some(id);
+        }
+
+        ctx.func.signature = sig;
+        ctx.func.name = UserFuncName::user(0, id.as_u32());
+        lower_fn_body(&mut ctx.func, &mut fb_ctx, name, params, &arr[4])?;
+
+        verify_function(&ctx.func, jit.isa()).map_err(|e| {
+            vec![err(
+                "codegen.error",
+                format!("verify `{name}`: {e}"),
+            )]
+        })?;
+
+        jit.define_function(id, &mut ctx)
+            .map_err(|e| vec![err("codegen.error", format!("define `{name}`: {e}"))])?;
+        jit.clear_context(&mut ctx);
     }
-    Ok(())
+
+    jit.finalize_definitions()
+        .map_err(|e| vec![err("codegen.error", format!("finalize: {e}"))])?;
+
+    let main = if let Some(id) = main_id {
+        let ptr = jit.get_finalized_function(id);
+        // SAFETY: signature is `() -> i32`, matching declare/define above; ptr is live
+        // for the lifetime of `jit`, which outlives this call.
+        let f: extern "C" fn() -> i32 = unsafe { std::mem::transmute(ptr) };
+        Some(f())
+    } else {
+        None
+    };
+
+    Ok(CompileOutcome { main })
 }
 
 fn host_isa() -> Result<Arc<dyn cranelift_codegen::isa::TargetIsa>, Vec<Diagnostic>> {
@@ -84,96 +160,52 @@ fn host_isa() -> Result<Arc<dyn cranelift_codegen::isa::TargetIsa>, Vec<Diagnost
         .map_err(|e| vec![err("codegen.error", format!("ISA finish: {e}"))])
 }
 
-fn compile_fn(
-    f: &Value,
-    index: u32,
-    isa: &dyn cranelift_codegen::isa::TargetIsa,
+fn lower_fn_body(
+    func: &mut cranelift_codegen::ir::Function,
     fb_ctx: &mut FunctionBuilderContext,
+    name: &str,
+    params: &[Value],
+    body: &Value,
 ) -> Result<(), Vec<Diagnostic>> {
-    let arr = f.as_array().unwrap();
-    let name = arr[1].as_str().unwrap();
-    let params = arr[2].as_array().unwrap();
-    let ret_ty = parse_simple_ty(&arr[3])?;
-    if ret_ty != AirTy::I32 {
-        return Err(vec![err(
-            "codegen.unsupported",
-            format!("fn `{name}`: only i32 return is supported in Cranelift MVP"),
-        )]);
+    let mut builder = FunctionBuilder::new(func, fb_ctx);
+    let entry = builder.create_block();
+    builder.append_block_params_for_function_params(entry);
+    builder.switch_to_block(entry);
+    builder.seal_block(entry);
+
+    let mut env = HashMap::new();
+    let block_params: Vec<_> = builder.block_params(entry).to_vec();
+    for (i, p) in params.iter().enumerate() {
+        let pname = p.as_array().unwrap()[0].as_str().unwrap().to_string();
+        let var = builder.declare_var(types::I32);
+        builder.def_var(var, block_params[i]);
+        env.insert(
+            pname,
+            Local {
+                var,
+                ty: AirTy::I32,
+            },
+        );
     }
 
-    let mut sig = cranelift_codegen::ir::Signature::new(isa.default_call_conv());
-    for p in params {
-        let pa = p.as_array().ok_or_else(|| {
-            vec![err(
-                "codegen.unsupported",
-                format!("fn `{name}`: bad param"),
-            )]
-        })?;
-        let pty = parse_simple_ty(&pa[1])?;
-        if pty != AirTy::I32 {
-            return Err(vec![err(
-                "codegen.unsupported",
-                format!("fn `{name}`: only i32 params in Cranelift MVP"),
-            )]);
-        }
-        sig.params.push(AbiParam::new(types::I32));
-    }
-    sig.returns.push(AbiParam::new(types::I32));
-
-    let mut func = Function::with_name_signature(UserFuncName::user(0, index), sig);
-    {
-        let mut builder = FunctionBuilder::new(&mut func, fb_ctx);
-        let entry = builder.create_block();
-        builder.append_block_params_for_function_params(entry);
-        builder.switch_to_block(entry);
-        builder.seal_block(entry);
-
-        let mut env = HashMap::new();
-        let block_params: Vec<_> = builder.block_params(entry).to_vec();
-        for (i, p) in params.iter().enumerate() {
-            let pname = p.as_array().unwrap()[0].as_str().unwrap().to_string();
-            let var = builder.declare_var(types::I32);
-            builder.def_var(var, block_params[i]);
-            env.insert(
-                pname,
-                Local {
-                    var,
-                    ty: AirTy::I32,
-                },
-            );
-        }
-
-        match lower_expr(&mut builder, &mut env, &arr[4], None)? {
-            Lowered::Value(v, ty) => {
-                if ty != AirTy::I32 {
-                    return Err(vec![err(
-                        "codegen.unsupported",
-                        format!("fn `{name}`: body must yield i32"),
-                    )]);
-                }
-                builder.ins().return_(&[v]);
-            }
-            Lowered::Unreachable => {
+    match lower_expr(&mut builder, &mut env, body, None)? {
+        Lowered::Value(v, ty) => {
+            if ty != AirTy::I32 {
                 return Err(vec![err(
                     "codegen.unsupported",
-                    format!("fn `{name}`: body does not return"),
+                    format!("fn `{name}`: body must yield i32"),
                 )]);
             }
+            builder.ins().return_(&[v]);
         }
-        builder.finalize();
+        Lowered::Unreachable => {
+            return Err(vec![err(
+                "codegen.unsupported",
+                format!("fn `{name}`: body does not return"),
+            )]);
+        }
     }
-
-    verify_function(&func, isa).map_err(|e| {
-        vec![err(
-            "codegen.error",
-            format!("verify `{name}`: {e}"),
-        )]
-    })?;
-
-    let mut ctx = Context::for_function(func);
-    let mut ctrl = ControlPlane::default();
-    ctx.compile(isa, &mut ctrl)
-        .map_err(|e| vec![err("codegen.error", format!("compile `{name}`: {e:?}"))])?;
+    builder.finalize();
     Ok(())
 }
 
@@ -529,7 +561,8 @@ mod tests {
             .expect("sum.air");
         let module = parse_module_file("examples/sum.air", &text).expect("parse");
         typecheck_module(&module).expect("check");
-        compile_module(&module).expect("compile");
+        let out = compile_module(&module).expect("compile");
+        assert_eq!(out.main, Some(55));
     }
 
     #[test]
