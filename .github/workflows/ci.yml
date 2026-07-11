@@ -52,6 +52,7 @@ jobs:
           out=$(/tmp/airc-hello-ci)
           test "$out" = "hello"
           rm -f /tmp/airc-hello-ci
+          cargo run -q -p airc -- compile examples/add.air | grep -F 'jit main => 42'
 
       - uses: actions/setup-node@v4
         with:

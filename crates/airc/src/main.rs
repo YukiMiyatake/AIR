@@ -320,6 +320,11 @@ mod tests {
     }
 
     #[test]
+    fn add_user_fn_is_42() {
+        assert_eq!(run_i32("examples/add.air"), 42);
+    }
+
+    #[test]
     fn div_by_zero_match_is_minus_one() {
         assert_eq!(run_i32("examples/div.air"), -1);
     }
@@ -460,7 +465,7 @@ mod tests {
         use airc::{normalize_lit_digits, pack_airb, parse_sexpr_value, print_sexpr, unpack_airb};
         let names = [
             "sum", "div", "arr", "hello", "overflow", "aset", "borrow_ok", "bad_move", "bad_borrow",
-            "point", "option", "bad_enum_match", "pair", "fset",
+            "point", "option", "bad_enum_match", "pair", "fset", "add",
         ];
         for name in names {
             let json_path = format!("examples/{name}.air.json");

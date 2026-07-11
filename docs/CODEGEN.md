@@ -38,7 +38,7 @@ Cranelift IR
 
 **In**
 
-- `fn` with `i32` params / `i32` return
+- `fn` with `i32` params / `i32` return (including **calls between user fns**)
 - `lit` / `var` / `seq` / `let` / `set!` / `if` / `loop` / `break` / `return`
 - Builtin calls: `+ - * /` and `<= < > >= == !=` on `i32` (wrapping arith, matching the interpreter)
 - JIT-run parameterless `main`
@@ -48,7 +48,7 @@ Cranelift IR
 
 **Out (later)**
 
-- `cap.print` of non-literal strings / richer caps; user fn calls, `match`, arrays, `struct` / `enum`
+- `cap.print` of non-literal / i32 values; `match`, arrays, `struct` / `enum`
 - Freestanding on non-Linux hosts
 - Full LLVM path; generics / traits; tasks / channels
 

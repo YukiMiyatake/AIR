@@ -104,7 +104,8 @@ Near-term:
 | Done | Object emit (`-o *.o`) + hosted binary link via `cc`; freestanding `_start` sketch in CODEGEN |
 | Done | Freestanding `_start` / `-nostdlib -static` binary (`--freestanding`) |
 | Done | Hosted `cap.print` native glue (string literals → `puts`) |
-| Next | Broaden codegen subset (user fns / match / i32 print); more freestanding targets |
+| Done | User `fn` calls in Cranelift MVP (`examples/add.air` → 42) |
+| Next | `match` / i32 `cap.print`; more freestanding targets |
 
 ## Phase 3 — Language core growth
 
