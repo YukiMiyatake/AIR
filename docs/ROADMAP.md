@@ -50,6 +50,7 @@ In particular: `examples/hello.air` prints `hello` on program stdout (asserted i
 | Done | Tuple enum payloads (`[ty...]`) |
 | Done | Field store builtin `fset` |
 | Done | Docs/CLI: `.air` default; JSON legacy |
+| Done | `check` / `run` accept `.airb` |
 | Later | Richer binary payloads; drop `.air.json` when TS CLI is retired |
 
 ### Hosted I/O priority (do not wait for Phase 3/5)

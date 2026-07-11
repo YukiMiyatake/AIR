@@ -1,7 +1,7 @@
 //! AIR reference CLI (Rust) — Phase 1.5 parity with tools/airc for check/run.
 
 use airc::{
-    ast_digest_hex, ast_eq, emit_diags, pack_airb, parse_module_file, print_sexpr, print_value,
+    ast_digest_hex, ast_eq, emit_diags, load_module_path, pack_airb, print_sexpr, print_value,
     run_module, typecheck_module, unpack_airb, value_to_exit_code,
 };
 use std::env;
@@ -13,15 +13,16 @@ fn usage() -> &'static str {
 
 Usage:
   airc version
-  airc fmt    <file.air>          # print canonical S-expr (.air.json legacy)
-  airc hash   <file.air>          # SHA-256 of structural AST
+  airc fmt    <file.air|.airb>    # print canonical S-expr (.air.json legacy)
+  airc hash   <file.air|.airb>    # SHA-256 of structural AST
   airc eq     <fileA> <fileB>     # exit 0 if same AST
   airc pack   <file.air> <out.airb>
   airc unpack <file.airb>         # print S-expr
-  airc check  <file.air> [--diag=text|json]
-  airc run    <file.air> [--diag=text|json]
+  airc check  <file.air|.airb> [--diag=text|json]
+  airc run    <file.air|.airb> [--diag=text|json]
 
-Default encoding is .air (S-expr). .air.json remains accepted for legacy parity.
+Default text encoding is .air (S-expr). .airb is accepted for check/run/fmt/hash/eq.
+.air.json remains accepted for legacy parity.
 "
 }
 
@@ -60,14 +61,7 @@ fn parse_cli(args: &[String]) -> Result<Cli, String> {
 }
 
 fn load_module(path: &str, diag: &str) -> Result<airc::Module, ExitCode> {
-    let text = match fs::read_to_string(path) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("{path}: {e}");
-            return Err(ExitCode::from(1));
-        }
-    };
-    match parse_module_file(path, &text) {
+    match load_module_path(path) {
         Ok(m) => Ok(m),
         Err(diags) => {
             emit_diags(&diags, diag, path);
@@ -223,8 +217,8 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use airc::{
-        ast_digest_hex, parse_module_file, parse_module_json, run_module, typecheck_module,
-        with_stdout_capture, AirValue,
+        ast_digest_hex, load_module_path, pack_airb, parse_module_airb, parse_module_file,
+        parse_module_json, run_module, typecheck_module, with_stdout_capture, AirValue,
     };
 
     fn load(path: &str) -> String {
@@ -346,6 +340,27 @@ mod tests {
     #[test]
     fn fset_then_field_is_ten() {
         assert_eq!(run_i32("examples/fset.air"), 10);
+    }
+
+    #[test]
+    fn packed_airb_sum_checks_and_runs() {
+        let module =
+            parse_module_file("examples/sum.air", &load("examples/sum.air")).expect("parse");
+        typecheck_module(&module).expect("check .air");
+        let bytes = pack_airb(&module.raw).expect("pack");
+        let from_bytes = parse_module_airb(&bytes).expect("parse airb bytes");
+        assert_eq!(module.raw, from_bytes.raw);
+        typecheck_module(&from_bytes).expect("check airb");
+        match run_module(&from_bytes).expect("run airb") {
+            AirValue::I32(n) => assert_eq!(n, 55),
+            other => panic!("{other:?}"),
+        }
+        let dir = std::env::temp_dir();
+        let path = dir.join("air_sum_test.airb");
+        std::fs::write(&path, &bytes).expect("write airb");
+        let loaded = load_module_path(path.to_str().unwrap()).expect("load path");
+        assert_eq!(module.raw, loaded.raw);
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

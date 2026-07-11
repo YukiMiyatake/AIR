@@ -117,14 +117,16 @@ Example (`sum`):
 **User-defined types do not expand the tag enum.**  
 `["named", "Point"]` → tagged/`named` opcode path + **symbol id** for `"Point"`.
 
-CLI (derived artifact; not for PRs by default):
+CLI:
 
 ```bash
 airc pack examples/sum.air /tmp/sum.airb
 airc unpack /tmp/sum.airb
+airc check /tmp/sum.airb
+airc run /tmp/sum.airb
 ```
 
-PRs and agents still see S-expr; `pack` / `unpack` convert.
+`.airb` is a derived artifact (not for PRs by default). `check` / `run` / `fmt` / `hash` / `eq` accept it by unpacking to the same AST.
 
 ## JSON (legacy bootstrap)
 
@@ -142,6 +144,7 @@ Still accepted by `airc` for parity with early Phase 1 fixtures and TS oracle te
 | Done | TS `.air` S-expr parse (`parseModuleFile`) |
 | Done | Binary `.airb` v1 sketch (`airc pack` / `unpack`) |
 | Done | Docs/CLI: `.air` is the default; JSON is legacy |
+| Done | `airc check` / `run` (and fmt/hash/eq) accept `.airb` |
 | Later | Richer binary payloads; drop `.air.json` fixtures when TS CLI is retired |
 
 ## Non-goals
