@@ -48,6 +48,9 @@ fn lit_value(width: &str, digits: &str) -> Result<AirValue, EvalErr> {
     if width == "bool" {
         return Ok(AirValue::Bool(digits == "true"));
     }
+    if width == "str" {
+        return Ok(AirValue::Str(digits.to_string()));
+    }
     let n: i32 = digits
         .parse()
         .map_err(|_| EvalErr::Msg(format!("runtime.lit: {digits}")))?;
@@ -150,6 +153,18 @@ fn eval2(
                 },
                 "ok" => Ok(AirValue::Ok(Box::new(args[0].clone()))),
                 "err" => Ok(AirValue::Err(Box::new(args[0].clone()))),
+                "aget" => {
+                    let idx = as_i32(&args[1])?;
+                    match &args[0] {
+                        AirValue::Array(elems) => {
+                            if idx < 0 || idx as usize >= elems.len() {
+                                return Err(EvalErr::Msg("runtime.oob".into()));
+                            }
+                            Ok(elems[idx as usize].clone())
+                        }
+                        _ => Err(EvalErr::Msg("runtime.aget".into())),
+                    }
+                }
                 other => {
                     let f = fns
                         .get(other)
@@ -163,6 +178,36 @@ fn eval2(
                     eval2(&arr[4], &mut frame, fns)
                 }
             }
+        }
+        "match" => {
+            let scr = eval2(&rest[0], env, fns)?;
+            for arm in &rest[1..] {
+                let aa = arm.as_array().unwrap();
+                let pat = aa[0].as_array().unwrap();
+                let body = &aa[1];
+                let mut child = env.clone();
+                match (pat[0].as_str(), &scr) {
+                    (Some("ok"), AirValue::Ok(v)) => {
+                        let name = pat[1].as_str().unwrap().to_string();
+                        child.insert(name, (**v).clone());
+                        return eval2(body, &mut child, fns);
+                    }
+                    (Some("err"), AirValue::Err(v)) => {
+                        let name = pat[1].as_str().unwrap().to_string();
+                        child.insert(name, (**v).clone());
+                        return eval2(body, &mut child, fns);
+                    }
+                    _ => continue,
+                }
+            }
+            Err(EvalErr::Msg("runtime.match".into()))
+        }
+        "array_lit" => {
+            let mut elems = Vec::new();
+            for el in &rest[1..] {
+                elems.push(eval2(el, env, fns)?);
+            }
+            Ok(AirValue::Array(elems))
         }
         "as" => eval2(&rest[1], env, fns),
         "cap" => {
