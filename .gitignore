@@ -24,3 +24,9 @@ Thumbs.db
 node_modules/
 tools/*/dist/
 target/
+
+# Local ops / handoff (do not publish)
+.setup/
+.setup-log.txt
+HANDOFF.md
+scripts/setup-github-flow.sh
