@@ -44,7 +44,7 @@ AIR keeps **systems-level ambition** and changes the representation:
 
 1. **Systems-capable general-purpose** — userland *and* freestanding/kernel profiles.
 2. **Statically typed** — precise integer/float/pointer types; typechecking before execution/codegen.
-3. **Canonical form is AST** — tagged, typed nodes; dense and regular for models.
+3. **Canonical form is AST** — tagged, typed nodes; dense and regular for models ([ENCODING.md](ENCODING.md)).
 4. **Mnemonic is a view** — round-trip with AST required.
 5. **Explicit memory** — ownership/move/borrow + explicit allocators/arenas; no hidden GC.
 6. **Explicit effects** — capability-gated operations; freestanding cores omit hosted I/O.

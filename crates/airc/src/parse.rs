@@ -14,7 +14,12 @@ pub fn parse_module_json(text: &str) -> Result<Module, Vec<Diagnostic>> {
     parse_module(data)
 }
 
-fn parse_module(data: Value) -> Result<Module, Vec<Diagnostic>> {
+/// Parse air-format from JSON or S-expr (`Value` tree).
+pub fn parse_module_value(data: Value) -> Result<Module, Vec<Diagnostic>> {
+    parse_module(data)
+}
+
+pub fn parse_module(data: Value) -> Result<Module, Vec<Diagnostic>> {
     let Some((t, rest)) = tag(&data) else {
         return Err(vec![err("parse.invalid", "root must be [mod, name, items...]")]);
     };

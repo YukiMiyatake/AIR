@@ -15,11 +15,12 @@ Phased plan toward a **statically typed, systems-capable** AIR (userland + frees
 - [CONCURRENCY.md](CONCURRENCY.md) — hosted tasks/channels + Alloc (Phase 4)
 - [AI_NATIVE.md](AI_NATIVE.md) — errors, process/shell, capabilities, concurrency defaults
 - [EXAMPLES.md](EXAMPLES.md) — air-format v0 example suite
+- [ENCODING.md](ENCODING.md) — S-expr / JSON / binary layers; user names vs syntax tags
 - This roadmap
 
 ## Phase 1 — Typed bootstrap
 
-Contract: [SUBSET.md](SUBSET.md). Pre-decisions: [PHASE1_DECISIONS.md](PHASE1_DECISIONS.md). Tooling: [TOOLING.md](TOOLING.md).
+Contract: [SUBSET.md](SUBSET.md). Pre-decisions: [PHASE1_DECISIONS.md](PHASE1_DECISIONS.md). Tooling: [TOOLING.md](TOOLING.md). Encoding: [ENCODING.md](ENCODING.md).
 
 - **[AIR_FORMAT.md](AIR_FORMAT.md) air-format v0** — minimal typed AST
 - Typechecker + ownership check ([OWNERSHIP.md](OWNERSHIP.md))
@@ -29,9 +30,19 @@ Contract: [SUBSET.md](SUBSET.md). Pre-decisions: [PHASE1_DECISIONS.md](PHASE1_DE
 - Example suite in [EXAMPLES.md](EXAMPLES.md)
 - **Hosted stdout** via `cap.print` (required for example / smoke tests — not optional polish)
 - **Docker** (`Dockerfile`, `compose.yaml`) as the supported dev environment
+- **Encodings:** JSON bootstrap + **canonical S-expr** (`.air`); `airc fmt`; binary pack later
 
 Exit criteria: see SUBSET definition of done + PHASE1_DECISIONS CLI behavior.  
 In particular: `examples/hello.air.json` prints `hello` on program stdout (asserted in tests), distinct from the CLI printing the `main` return value.
+
+### Encoding track (parallel to language features)
+
+| Step | Deliverable |
+|------|-------------|
+| Docs | [ENCODING.md](ENCODING.md) — tags closed; user names open; Diff via S-expr |
+| Now | Rust `fmt` + `.air` parse; `examples/sum.air` |
+| Next | Migrate examples to `.air`; AST hash / structural eq CLI |
+| Later | Binary `.airb` pack (syntax tags only; symbols interned) |
 
 ### Hosted I/O priority (do not wait for Phase 3/5)
 
