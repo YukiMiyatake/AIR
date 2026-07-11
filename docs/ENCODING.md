@@ -129,8 +129,9 @@ Retained for Phase 1 examples and TS tooling. Prefer `.air` for new fixtures onc
 | Done | All Phase 1 examples as `.air` (+ `.air.json` parity for TS) |
 | Done | `airc hash` / `airc eq` (structural AST identity) |
 | Done | Line-oriented `fmt` (head-inline / body-block for Diff) |
-| Next | TS `.air` parse (optional); binary `.airb` sketch |
-| Later | Binary `.airb` pack; deprecate JSON as default in docs |
+| Done | TS `.air` S-expr parse (`parseModuleFile`) |
+| Next | Binary `.airb` sketch |
+| Later | Deprecate JSON as default in docs |
 
 ## Non-goals
 
