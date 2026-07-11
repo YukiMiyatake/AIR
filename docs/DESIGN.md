@@ -156,8 +156,46 @@ Unchanged requirements: one op per line, explicit slots, **round-trip** with AST
 
 - Imperative, expression-oriented, procedure/function based
 - First-class functions/closures **where allocation/ownership allows** (closures that capture may require allocator or stack-only rules)
-- Not class-OOP
+- Not class-OOP; not prototype-OOP (see Abstraction below)
 - Systems: explicit memory, static types, freestanding profile
+
+## Abstraction, DI, and mocks
+
+AIR needs **substitutable abstractions** for dependency injection and test doubles. It does **not** need classes or JavaScript-style prototypes.
+
+| Mechanism | Status | Role |
+|-----------|--------|------|
+| Class hierarchy / inheritance | **Rejected** as core model | Hidden coupling; poor AST clarity |
+| JS-style prototypes | **Rejected** | Runtime delegation mutation; hostile to static checking and audit |
+| Traits / interfaces (Go/Rust-like) | **Adopt** | Named capability sets for APIs (`Fs`, `Clock`, …) |
+| Explicit DI (pass deps as args) | **Adopt** | No ambient service locator / global singleton as default |
+| Explicit vtable / function record | **Adopt** | Runtime swap for mocks, drivers, freestanding ops bundles |
+| Static dispatch (monomorphized traits) | **Adopt** | Zero-cost when the impl is known at compile time |
+| Dynamic trait objects (`dyn`-like) | **Optional later** | Fat pointer + hidden vtable when type erasure is required |
+
+### Explicit vtable (normative pattern)
+
+A vtable here means a **visible struct of function pointers** (and optional context pointer), not an invisible object-system table:
+
+```text
+struct FileOps {
+  ctx: *mut (),
+  read:  fn(*mut (), buf: &mut [u8]) -> Result[usize, IoError],
+  write: fn(*mut (), buf: &[u8]) -> Result[usize, IoError],
+}
+```
+
+- Production code and tests pass different `FileOps` values.
+- Kernel/freestanding drivers naturally look like this.
+- The AST shows which ops bundle is used — AI-Native and auditable.
+
+**Do not reject vtables.** Reject only *implicit* class/prototype dispatch that agents cannot see.
+
+### DI policy
+
+- Prefer **constructor-/argument-injection** of traits, ops structs, or capabilities.
+- Mocks are alternate impls or alternate vtables — not monkey-patching prototypes.
+- Global mutable registries for services are non-goals.
 
 ## Explicit non-goals
 
@@ -165,8 +203,10 @@ Unchanged requirements: one op per line, explicit slots, **round-trip** with AST
 - Default GC runtime
 - Human sugar as canonical form
 - Class-based OOP as the core model
+- Prototype-based OOP (JS-style)
 
 ## Versioning
 
 - This document supersedes earlier dynamic-typed sketches (**design v0.1 systems**).
+- Abstraction/DI/vtable policy added for mocks and freestanding drivers.
 - Example programs in [EXAMPLES.md](EXAMPLES.md) still reflect the old dynamic sketch and must be rewritten.

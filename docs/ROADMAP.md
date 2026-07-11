@@ -34,9 +34,12 @@ Exit criteria: at least one freestanding binary (e.g. bare demo or kernel module
 
 - Modules / imports
 - Generics (monomorphization)
+- **Traits / interfaces** for abstraction
+- **Explicit vtable / function-record** pattern for DI, mocks, and freestanding drivers
 - Closures under ownership rules
 - Richer stdlib for `std` profile (collections on allocators)
 - Deeper borrow/lifetime expressiveness as needed
+- Optional later: `dyn`-like trait objects (fat pointer) as sugar over explicit vtables
 
 ## Phase 4 — Concurrency
 
