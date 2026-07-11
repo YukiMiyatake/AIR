@@ -180,6 +180,14 @@ Callee is a string builtin:
 
 Mismatched widths require `["as", ty, expr]` first.
 
+### Other v0 builtins
+
+| Builtin | Meaning |
+|---------|---------|
+| `ok` / `err` | Construct `Result` values: `["call", "ok", v]`, `["call", "err", e]` |
+| `aget` | `aget(arr, idx)` element load for `[T; N]` (OOB: interpreter abort in v0) |
+| `aset` | `aset(arr, idx, v)` element store (arrays are mutable places in v0 locals) |
+
 ## Function pointer / vtable values (shape only)
 
 ```json
