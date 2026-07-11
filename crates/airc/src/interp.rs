@@ -145,6 +145,33 @@ fn eval2(
         "return" => eval2(&rest[0], env, fns),
         "call" => {
             let callee = rest[0].as_str().unwrap();
+            if callee == "aset" {
+                if rest.len() != 4 {
+                    return Err(EvalErr::Msg("runtime.aset arity".into()));
+                }
+                let (pt, prest) = tag(&rest[1]).ok_or_else(|| EvalErr::Msg("runtime.aset place".into()))?;
+                if pt != "var" {
+                    return Err(EvalErr::Msg(
+                        "runtime.aset: place must be [\"var\", name]".into(),
+                    ));
+                }
+                let name = prest[0].as_str().unwrap().to_string();
+                let idx = as_i32(&eval2(&rest[2], env, fns)?)?;
+                let val = eval2(&rest[3], env, fns)?;
+                let slot = env
+                    .get_mut(&name)
+                    .ok_or_else(|| EvalErr::Msg(format!("runtime.unbound: {name}")))?;
+                match slot {
+                    AirValue::Array(elems) => {
+                        if idx < 0 || idx as usize >= elems.len() {
+                            return Err(EvalErr::Msg("runtime.oob".into()));
+                        }
+                        elems[idx as usize] = val;
+                        Ok(AirValue::I32(0))
+                    }
+                    _ => Err(EvalErr::Msg("runtime.aset".into())),
+                }
+            } else {
             let mut args = Vec::new();
             for a in &rest[1..] {
                 args.push(eval2(a, env, fns)?);
@@ -238,6 +265,7 @@ fn eval2(
                     }
                     eval2(&arr[4], &mut frame, fns)
                 }
+            }
             }
         }
         "match" => {

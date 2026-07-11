@@ -72,3 +72,14 @@ test("checked_add ok path is 42", () => {
   assert.equal(v.tag, "i32");
   if (v.tag === "i32") assert.equal(v.v, 42);
 });
+
+test("aset then aget is 9", () => {
+  const text = readFileSync(join(root, "examples/aset.air.json"), "utf8");
+  const parsed = parseModuleJson(text);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(typecheckModule(parsed.module).ok, true);
+  const v = runModule(parsed.module);
+  assert.equal(v.tag, "i32");
+  if (v.tag === "i32") assert.equal(v.v, 9);
+});

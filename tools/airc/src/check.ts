@@ -196,6 +196,16 @@ function checkExpr(
       if (callee === "aget" && argTys.length === 2 && Array.isArray(argTys[0]) && argTys[0][0] === "array") {
         return argTys[0][1];
       }
+      if (
+        callee === "aset" &&
+        argTys.length === 3 &&
+        Array.isArray(argTys[0]) &&
+        argTys[0][0] === "array" &&
+        argTys[1] === "i32" &&
+        tyEq(argTys[0][1], argTys[2]!)
+      ) {
+        return "i32";
+      }
       const fn = fns.get(callee);
       if (!fn) {
         diags.push(err(`unknown function ${callee}`, "type.unbound"));
