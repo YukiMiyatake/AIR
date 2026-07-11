@@ -1,8 +1,33 @@
 use crate::parse::{find_fn, Module};
 use serde_json::Value;
+use std::cell::RefCell;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+thread_local! {
+    static STDOUT_CAPTURE: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+}
+
+/// Run `f` while capturing lines written by `cap.print` (not CLI `print_value`).
+pub fn with_stdout_capture<R>(f: impl FnOnce() -> R) -> (R, Vec<String>) {
+    STDOUT_CAPTURE.with(|c| {
+        *c.borrow_mut() = Some(Vec::new());
+    });
+    let result = f();
+    let lines = STDOUT_CAPTURE.with(|c| c.borrow_mut().take().unwrap_or_default());
+    (result, lines)
+}
+
+fn host_print_line(line: &str) {
+    STDOUT_CAPTURE.with(|c| {
+        if let Some(buf) = c.borrow_mut().as_mut() {
+            buf.push(line.to_string());
+        } else {
+            println!("{line}");
+        }
+    });
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AirValue {
     I32(i32),
     Bool(bool),
@@ -214,8 +239,8 @@ fn eval2(
             if rest[0].as_str() == Some("print") {
                 let v = eval2(&rest[1], env, fns)?;
                 match v {
-                    AirValue::Str(s) => println!("{s}"),
-                    other => println!("{other:?}"),
+                    AirValue::Str(s) => host_print_line(&s),
+                    other => host_print_line(&format!("{other:?}")),
                 }
             }
             Ok(AirValue::I32(0))

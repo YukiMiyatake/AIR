@@ -27,9 +27,21 @@ Contract: [SUBSET.md](SUBSET.md). Pre-decisions: [PHASE1_DECISIONS.md](PHASE1_DE
 - TypeScript reference CLI under `tools/airc` (bootstrap)
 - Overflow / `main` exit / JSON diagnostics per PHASE1_DECISIONS
 - Example suite in [EXAMPLES.md](EXAMPLES.md)
+- **Hosted stdout** via `cap.print` (required for example / smoke tests — not optional polish)
 - **Docker** (`Dockerfile`, `compose.yaml`) as the supported dev environment
 
-Exit criteria: see SUBSET definition of done + PHASE1_DECISIONS CLI behavior.
+Exit criteria: see SUBSET definition of done + PHASE1_DECISIONS CLI behavior.  
+In particular: `examples/hello.air.json` prints `hello` on program stdout (asserted in tests), distinct from the CLI printing the `main` return value.
+
+### Hosted I/O priority (do not wait for Phase 3/5)
+
+| Need | When | Notes |
+|------|------|--------|
+| `cap.print` → stdout | **Phase 1 / 1.5** | Example suite, agent smoke loops |
+| stdin / stderr stubs | Phase 1.5+ as needed for tests | Still capability-gated |
+| `cap.fs` / richer std I/O | Phase 3 hosted stdlib | After language core growth starts |
+| `cap.net` / TCP | after Phase 3 | Policy in [AI_NATIVE.md](AI_NATIVE.md) |
+| HTTP / RPC / Communication IR | **Phase 5** | Separate from language core |
 
 ## Phase 1.5 — Rust `airc` parity
 
@@ -37,13 +49,14 @@ Exit criteria: see SUBSET definition of done + PHASE1_DECISIONS CLI behavior.
 - Ship single binary via `Dockerfile.airc`
 - Keep TS suite as oracle until parity; then deprecate TS CLI
 - Dev workflow remains Docker-first
+- Parity includes **`cap.print` stdout** (same lines as TS for `hello.air.json`)
 
-Exit criteria: `docker compose run --rm airc-rs version` works; `check`/`run` on `examples/sum.air.json` matches TS results (**55**).
+Exit criteria: `docker compose run --rm airc-rs version` works; `check`/`run` on `examples/sum.air.json` matches TS results (**55**); `hello.air.json` stdout is `hello` under both CLIs.
 
 ## Phase 2 — Native + freestanding
 
 - Native codegen path (backend TBD: LLVM / Cranelift / custom) **in Rust airc**
-- `freestanding` profile: no GC, no hosted I/O runtime
+- `freestanding` profile: no GC, no hosted I/O runtime (`cap.print` is hosted-only)
 - Target intrinsics sketch (atomics, volatile MMIO, asm) behind `unsafe`
 - Agent loop: generate → type/borrow diagnostics → patch
 
@@ -56,7 +69,7 @@ Exit criteria: at least one freestanding binary (e.g. bare demo or kernel module
 - **Traits / interfaces** for abstraction
 - **Explicit vtable / function-record** pattern for DI, mocks, and freestanding drivers
 - Closures under ownership rules
-- Richer stdlib for `std` profile (collections on allocators)
+- Richer stdlib for `std` profile (collections on allocators; **fs / richer I/O caps**)
 - Deeper borrow/lifetime expressiveness as needed
 - Optional later: `dyn`-like trait objects (fat pointer) as sugar over explicit vtables
 
@@ -69,7 +82,7 @@ Exit criteria: at least one freestanding binary (e.g. bare demo or kernel module
 
 ## Phase 5 — Communication IR (separate)
 
-Deferred; do not conflate with the systems language core.
+TCP/HTTP/RPC-style **communication IR** — deferred; do not conflate with the systems language core or with Phase 1 stdout.
 
 ## Versioning
 

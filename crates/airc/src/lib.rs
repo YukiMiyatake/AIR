@@ -7,6 +7,6 @@ pub mod parse;
 
 pub use check::typecheck_module;
 pub use diag::{emit_diags, Diagnostic, DiagMode};
-pub use interp::{print_value, run_module, value_to_exit_code, AirValue};
+pub use interp::{print_value, run_module, value_to_exit_code, with_stdout_capture, AirValue};
 
 pub use parse::{parse_module_json, Module};
