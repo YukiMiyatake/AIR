@@ -6,7 +6,7 @@
   ],
   "scripts": {
     "build": "npm run build -w tools/airc",
-    "airc": "npm run airc -w tools/airc --",
+    "airc": "node tools/airc/dist/cli.js",
     "test": "npm run test -w tools/airc"
   }
 }
