@@ -202,7 +202,23 @@ After the inner `let` ends, `set!` / use is allowed again (`borrow_ok.air.json` 
         ["field", ["var", "p"], "y"]]]]]
 ```
 
-Expected `main` → `7`. User enums are still deferred.
+Expected `main` → `7`.
+
+---
+
+## Example 9 — User enum (`enum` / `variant_lit` / `variant` match)
+
+```json
+["mod", "option",
+  ["enum", "Opt", ["None"], ["Some", "i32"]],
+  ["fn", "main", [], "i32",
+    ["match",
+      ["variant_lit", "Opt", "Some", ["lit", "i32", "42"]],
+      [["variant", "Opt", "Some", "v"], ["var", "v"]],
+      [["variant", "Opt", "None"], ["lit", "i32", "-1"]]]]]
+```
+
+Expected `main` → `42`. Non-exhaustive match fails check (`bad_enum_match.air` → `type.match`).
 
 ---
 
@@ -222,6 +238,8 @@ Primary fixtures are **S-expr** (`.air`). JSON (`.air.json`) remains for the TS 
 | `bad_borrow.air` | **check fails** (`mem.borrow_conflict`) |
 | `borrow_ok.air` | `7` |
 | `point.air` | `7` (`struct` + `field`) |
+| `option.air` | `42` (`enum` + `variant` match) |
+| `bad_enum_match.air` | **check fails** (`type.match` non-exhaustive) |
 
 ```bash
 docker compose run --rm dev cargo run -p airc -- run examples/arr.air

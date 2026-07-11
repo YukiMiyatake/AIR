@@ -129,3 +129,25 @@ test("point struct field sum is 7", () => {
   assert.equal(v.tag, "i32");
   if (v.tag === "i32") assert.equal(v.v, 7);
 });
+
+test("option variant match is 42", () => {
+  const text = readFileSync(join(root, "examples/option.air"), "utf8");
+  const parsed = parseModuleFile("examples/option.air", text);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(typecheckModule(parsed.module).ok, true);
+  const v = runModule(parsed.module);
+  assert.equal(v.tag, "i32");
+  if (v.tag === "i32") assert.equal(v.v, 42);
+});
+
+test("check rejects non-exhaustive enum match", () => {
+  const text = readFileSync(join(root, "examples/bad_enum_match.air"), "utf8");
+  const parsed = parseModuleFile("examples/bad_enum_match.air", text);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const checked = typecheckModule(parsed.module);
+  assert.equal(checked.ok, false);
+  if (checked.ok) return;
+  assert.ok(checked.diags.some((d) => d.code === "type.match"));
+});

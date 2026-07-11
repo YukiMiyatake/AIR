@@ -198,6 +198,16 @@ Mismatched widths require `["as", ty, expr]` first.
 
 Calling a fn pointer: `["call", expr_callee, args...]` where callee type is `["fn", ...]`.
 
+### Variant construction (v0)
+
+```json
+["variant_lit", enum_name, variant_name]           // unit
+["variant_lit", enum_name, variant_name, payload]  // single payload
+```
+
+v0: at most one payload type per variant (tuple payloads later).  
+Match with `["variant", enum_name, variant_name, bind?]`. Exhaustive unless `_`.
+
 ### Field projection (v0)
 
 ```json

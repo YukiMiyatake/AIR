@@ -39,6 +39,11 @@ pub enum AirValue {
         name: String,
         fields: HashMap<String, AirValue>,
     },
+    Variant {
+        enum_name: String,
+        variant: String,
+        payload: Option<Box<AirValue>>,
+    },
 }
 
 #[derive(Debug)]
@@ -276,9 +281,12 @@ fn eval2(
             let scr = eval2(&rest[0], env, fns)?;
             for arm in &rest[1..] {
                 let aa = arm.as_array().unwrap();
-                let pat = aa[0].as_array().unwrap();
                 let body = &aa[1];
                 let mut child = env.clone();
+                if aa[0].as_str() == Some("_") {
+                    return eval2(body, &mut child, fns);
+                }
+                let pat = aa[0].as_array().unwrap();
                 match (pat[0].as_str(), &scr) {
                     (Some("ok"), AirValue::Ok(v)) => {
                         let name = pat[1].as_str().unwrap().to_string();
@@ -290,7 +298,20 @@ fn eval2(
                         child.insert(name, (**v).clone());
                         return eval2(body, &mut child, fns);
                     }
-                    _ => continue,
+                    (Some("variant"), AirValue::Variant { enum_name, variant, payload }) => {
+                        let penum = pat[1].as_str().unwrap();
+                        let pvar = pat[2].as_str().unwrap();
+                        if penum == enum_name.as_str() && pvar == variant.as_str() {
+                            if let Some(bind) = pat.get(3).and_then(|x| x.as_str()) {
+                                let Some(p) = payload else {
+                                    return Err(EvalErr::Msg("runtime.variant bind".into()));
+                                };
+                                child.insert(bind.to_string(), (**p).clone());
+                            }
+                            return eval2(body, &mut child, fns);
+                        }
+                    }
+                    _ => {}
                 }
             }
             Err(EvalErr::Msg("runtime.match".into()))
@@ -320,6 +341,26 @@ fn eval2(
                 fields.insert(fname, v);
             }
             Ok(AirValue::Struct { name, fields })
+        }
+        "variant_lit" => {
+            let enum_name = rest[0]
+                .as_str()
+                .ok_or_else(|| EvalErr::Msg("runtime.variant_lit enum".into()))?
+                .to_string();
+            let variant = rest[1]
+                .as_str()
+                .ok_or_else(|| EvalErr::Msg("runtime.variant_lit variant".into()))?
+                .to_string();
+            let payload = if rest.len() >= 3 {
+                Some(Box::new(eval2(&rest[2], env, fns)?))
+            } else {
+                None
+            };
+            Ok(AirValue::Variant {
+                enum_name,
+                variant,
+                payload,
+            })
         }
         "field" => {
             let place = eval2(&rest[0], env, fns)?;

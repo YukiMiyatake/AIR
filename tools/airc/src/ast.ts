@@ -42,6 +42,7 @@ export type Expr =
   | ["match", Expr, ...[unknown, Expr][]]
   | ["array_lit", Ty | null, ...Expr[]]
   | ["struct_lit", string, ...unknown[]]
+  | ["variant_lit", string, string, ...unknown[]]
   | ["field", Expr, string]
   | ["cap", string, ...Expr[]]
   | ["borrow", "shared" | "mut", Expr]

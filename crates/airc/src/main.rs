@@ -332,11 +332,30 @@ mod tests {
     }
 
     #[test]
+    fn option_variant_match_is_forty_two() {
+        assert_eq!(run_i32("examples/option.air"), 42);
+    }
+
+    #[test]
+    fn bad_enum_match_is_rejected() {
+        let module = parse_module_file(
+            "examples/bad_enum_match.air",
+            &load("examples/bad_enum_match.air"),
+        )
+        .expect("parse");
+        let err = typecheck_module(&module).expect_err("should fail exhaustiveness");
+        assert!(
+            err.iter().any(|d| d.code == "type.match"),
+            "expected type.match, got {err:?}"
+        );
+    }
+
+    #[test]
     fn air_matches_json_ast_for_suite() {
         use airc::{normalize_lit_digits, pack_airb, parse_sexpr_value, print_sexpr, unpack_airb};
         let names = [
             "sum", "div", "arr", "hello", "overflow", "aset", "borrow_ok", "bad_move", "bad_borrow",
-            "point",
+            "point", "option", "bad_enum_match",
         ];
         for name in names {
             let json_path = format!("examples/{name}.air.json");
