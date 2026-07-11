@@ -1,17 +1,19 @@
-(
-  mod
-  borrow_ok
-  (
-    fn
-    main
-    ()
-    i32
-    (
-      let
-      ((x i32 (lit i32 7)))
+(mod borrow_ok
+  (fn main () i32
+    (let
       (
-        seq
-        (let ((r (ref shared i32) (borrow shared (var x)))) (lit i32 0))
+        (x i32 (lit i32 7))
+      )
+      (seq
+        (let
+          (
+            (r
+              (ref shared i32)
+              (borrow shared (var x))
+            )
+          )
+          (lit i32 0)
+        )
         (var x)
       )
     )

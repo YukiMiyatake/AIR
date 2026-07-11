@@ -42,7 +42,8 @@ In particular: `examples/hello.air.json` prints `hello` on program stdout (asser
 | Docs | [ENCODING.md](ENCODING.md) — tags closed; user names open; Diff via S-expr |
 | Done | Rust `fmt` + `.air` parse; all Phase 1 `examples/*.air` |
 | Done | `airc hash` / `airc eq` |
-| Next | Line-oriented `fmt` polish |
+| Done | Line-oriented `fmt` polish |
+| Next | TS `.air` parse (optional) |
 | Later | Binary `.airb` pack (syntax tags only; symbols interned) |
 
 ### Hosted I/O priority (do not wait for Phase 3/5)

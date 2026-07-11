@@ -184,60 +184,170 @@ fn write_pretty(v: &Value, indent: usize, out: &mut String) {
                 push_quoted(s, out);
             }
         }
-        Value::Array(items) => {
-            if items.is_empty() {
-                out.push_str("()");
-                return;
-            }
-            // (lit str "hello") — always quote lit payload when width is str
-            if items.first().and_then(|x| x.as_str()) == Some("lit")
-                && items.len() == 3
-                && items[1].as_str() == Some("str")
-            {
-                out.push_str("(lit str ");
-                if let Value::String(s) = &items[2] {
-                    push_quoted(s, out);
-                } else {
-                    write_pretty(&items[2], indent, out);
-                }
-                out.push(')');
-                return;
-            }
-            out.push('(');
-            let multiline = should_multiline(items);
-            if !multiline {
-                for (i, it) in items.iter().enumerate() {
-                    if i > 0 {
-                        out.push(' ');
-                    }
-                    write_pretty(it, indent, out);
-                }
-                out.push(')');
-                return;
-            }
-            out.push('\n');
-            for it in items {
-                push_indent(indent + 1, out);
-                write_pretty(it, indent + 1, out);
-                out.push('\n');
-            }
-            push_indent(indent, out);
-            out.push(')');
-        }
+        Value::Array(items) => write_list(items, indent, out),
         Value::Object(_) => out.push_str("#<object>"),
     }
 }
 
-fn should_multiline(items: &[Value]) -> bool {
-    if items.len() <= 1 {
-        return false;
+fn write_list(items: &[Value], indent: usize, out: &mut String) {
+    if items.is_empty() {
+        out.push_str("()");
+        return;
     }
-    // Keep short call-like forms inline when compact.
-    let approx: usize = items.iter().map(approx_len).sum::<usize>() + items.len();
-    if approx <= 72 && items.iter().all(|x| !matches!(x, Value::Array(a) if a.len() > 3)) {
-        return false;
+    // (lit str "hello") — always quote lit payload when width is str
+    if items.first().and_then(|x| x.as_str()) == Some("lit")
+        && items.len() == 3
+        && items[1].as_str() == Some("str")
+    {
+        out.push_str("(lit str ");
+        if let Value::String(s) = &items[2] {
+            push_quoted(s, out);
+        } else {
+            write_pretty(&items[2], indent, out);
+        }
+        out.push(')');
+        return;
     }
-    items.iter().any(|x| matches!(x, Value::Array(a) if !a.is_empty()))
+
+    if prefers_inline(items) {
+        out.push('(');
+        for (i, it) in items.iter().enumerate() {
+            if i > 0 {
+                out.push(' ');
+            }
+            write_pretty(it, indent, out);
+        }
+        out.push(')');
+        return;
+    }
+
+    // Block form for Diff: leading atoms stay on the open line; each nested form on its own line.
+    out.push('(');
+    let mut i = 0;
+    while i < items.len() && is_head_atom(&items[i]) {
+        if i > 0 {
+            out.push(' ');
+        }
+        write_pretty(&items[i], indent, out);
+        i += 1;
+    }
+    // Keep a trailing empty params list `()` on the head line for `fn`.
+    if i < items.len() && items[i].as_array().is_some_and(|a| a.is_empty()) {
+        if i > 0 {
+            out.push(' ');
+        }
+        out.push_str("()");
+        i += 1;
+        // and a following bare type atom (fn ret)
+        if i < items.len() && is_head_atom(&items[i]) {
+            out.push(' ');
+            write_pretty(&items[i], indent, out);
+            i += 1;
+        }
+    }
+
+    if i >= items.len() {
+        out.push(')');
+        return;
+    }
+
+    out.push('\n');
+    while i < items.len() {
+        push_indent(indent + 1, out);
+        // let bindings: one binding per line inside the bindings list
+        if items.first().and_then(|x| x.as_str()) == Some("let") && i == 1 {
+            write_bindings_list(&items[i], indent + 1, out);
+        } else {
+            write_pretty(&items[i], indent + 1, out);
+        }
+        out.push('\n');
+        i += 1;
+    }
+    push_indent(indent, out);
+    out.push(')');
+}
+
+fn write_bindings_list(v: &Value, indent: usize, out: &mut String) {
+    let Some(items) = v.as_array() else {
+        write_pretty(v, indent, out);
+        return;
+    };
+    if items.is_empty() {
+        out.push_str("()");
+        return;
+    }
+    out.push('(');
+    out.push('\n');
+    for b in items {
+        push_indent(indent + 1, out);
+        write_pretty(b, indent + 1, out);
+        out.push('\n');
+    }
+    push_indent(indent, out);
+    out.push(')');
+}
+
+fn is_head_atom(v: &Value) -> bool {
+    match v {
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => true,
+        Value::Array(_) => false,
+        Value::Object(_) => false,
+    }
+}
+
+fn prefers_inline(items: &[Value]) -> bool {
+    let tag = items.first().and_then(|x| x.as_str());
+    match tag {
+        Some("mod" | "fn" | "let" | "seq" | "loop" | "if" | "match" | "array_lit") => false,
+        Some("lit" | "var") => true,
+        Some("break" | "return" | "cap" | "borrow" | "move" | "ok" | "err") => {
+            approx_len_list(items) <= 96 && items[1..].iter().all(is_shallow)
+        }
+        Some("call" | "set!" | "aget" | "aset") => {
+            approx_len_list(items) <= 96 && items[1..].iter().all(is_shallow)
+        }
+        Some(_) => approx_len_list(items) <= 72 && items.iter().all(is_shallow),
+        None => {
+            // params / binding rows / match arms without a tag
+            if items.iter().all(is_head_atom) {
+                return true;
+            }
+            // single binding row [name, ty, init] — keep inline when shallow
+            if items.len() <= 4 && items.iter().all(is_shallow) {
+                return approx_len_list(items) <= 96;
+            }
+            false
+        }
+    }
+}
+
+fn is_shallow(v: &Value) -> bool {
+    match v {
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => true,
+        Value::Array(a) => {
+            if a.is_empty() {
+                return true;
+            }
+            let t = a.first().and_then(|x| x.as_str());
+            match t {
+                Some("lit" | "var") => true,
+                Some("call") => a.len() <= 4 && a[1..].iter().all(|x| {
+                    matches!(x, Value::String(_) | Value::Number(_) | Value::Bool(_))
+                        || x.as_array().is_some_and(|c| {
+                            c.first().and_then(|t| t.as_str()) == Some("var")
+                                || c.first().and_then(|t| t.as_str()) == Some("lit")
+                        })
+                }),
+                Some("ref" | "array" | "result" | "named") => a.iter().all(is_head_atom) || a.len() <= 4,
+                _ => false,
+            }
+        }
+        Value::Object(_) => false,
+    }
+}
+
+fn approx_len_list(items: &[Value]) -> usize {
+    items.iter().map(approx_len).sum::<usize>() + items.len().saturating_mul(1)
 }
 
 fn approx_len(v: &Value) -> usize {
@@ -327,5 +437,20 @@ mod tests {
         let mut back = parse_sexpr_value(&text).unwrap();
         normalize_lit_digits(&mut back);
         assert_eq!(v, back);
+    }
+
+    #[test]
+    fn line_oriented_fn_keeps_head_inline() {
+        let json = r#"["fn","main",[],"i32",["seq",["lit","i32","0"],["lit","i32","1"]]]"#;
+        let v: Value = serde_json::from_str(json).unwrap();
+        let text = print_sexpr(&v);
+        assert!(
+            text.lines().next().unwrap().contains("(fn main () i32"),
+            "head line should keep fn signature: {text}"
+        );
+        assert!(
+            text.contains("\n  (seq\n"),
+            "seq body should be block-indented: {text}"
+        );
     }
 }

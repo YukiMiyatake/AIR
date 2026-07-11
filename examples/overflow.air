@@ -1,16 +1,15 @@
-(
-  mod
-  overflow
-  (
-    fn
-    main
-    ()
-    i32
-    (
-      match
+(mod overflow
+  (fn main () i32
+    (match
       (call checked_add (lit i32 2147483647) (lit i32 1))
-      ((ok v) (var v))
-      ((err e) (lit i32 -1))
+      (
+        (ok v)
+        (var v)
+      )
+      (
+        (err e)
+        (lit i32 -1)
+      )
     )
   )
 )
