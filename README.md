@@ -10,8 +10,8 @@ AIR is unrelated to CostGate / MCP tooling. Communication IR is a separate defer
 
 ## Status
 
-- Design docs + Phase 1 **TypeScript** `tools/airc` (parse/check/run; `examples/sum.air.json` → 55)
-- **Rust** `crates/airc` scaffold (production path)
+- Design docs + Phase 1 toolchain: **Rust** `crates/airc` + **TypeScript** `tools/airc` (parse/check/run; `examples/sum.air` → 55)
+- Canonical text is **`.air` S-expr**; `.air.json` is legacy parity only ([docs/ENCODING.md](docs/ENCODING.md))
 - **Docker-first** development ([docs/TOOLING.md](docs/TOOLING.md))
 
 ## Docker (supported workflow)
@@ -20,13 +20,13 @@ AIR is unrelated to CostGate / MCP tooling. Communication IR is a separate defer
 docker compose build dev
 docker compose run --rm dev bash
 
-# TypeScript bootstrap airc
-docker compose run --rm dev npm ci
-docker compose run --rm dev npm run airc -- run examples/sum.air.json
-
-# Rust airc scaffold
+# Rust airc (preferred)
 docker compose run --rm dev cargo test --workspace
-docker compose run --rm dev cargo run -p airc -- version
+docker compose run --rm dev cargo run -p airc -- run examples/sum.air
+
+# TypeScript bootstrap airc (still accepts .air)
+docker compose run --rm dev npm ci
+docker compose run --rm dev npm run airc -- run examples/sum.air
 
 # Release-style binary image
 docker compose build airc-rs
@@ -38,8 +38,8 @@ docker compose run --rm airc-rs version
 Node 22+ for TS; Rust 1.85+ for `crates/airc`. Prefer Docker if toolchains differ.
 
 ```bash
-npm ci && npm test && npm run airc -- run examples/sum.air.json
-cargo test --workspace && cargo run -p airc -- version
+cargo test --workspace && cargo run -p airc -- run examples/sum.air
+npm ci && npm test && npm run airc -- run examples/sum.air
 ```
 
 ## Docs

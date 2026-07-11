@@ -6,9 +6,9 @@ How we build and run the AIR toolchain. **Docker is the supported development en
 
 | Stage | Language | Path | Role |
 |-------|----------|------|------|
-| Phase 1 bootstrap (current) | **TypeScript / Node** | `tools/airc/` | Spec validation: parse / check / run on JSON AST |
+| Phase 1 bootstrap (current) | **TypeScript / Node** | `tools/airc/` | Spec validation: parse / check / run (`.air` preferred; `.air.json` legacy) |
 | Production toolchain | **Rust** | `crates/airc/` | Speed, single binary, native codegen path |
-| AIR programs themselves | AIR (air-format) | `examples/` | Not the host language |
+| AIR programs themselves | AIR (air-format) | `examples/*.air` | Not the host language |
 
 Rationale:
 
@@ -34,11 +34,14 @@ docker compose build dev
 # Shell in container (cwd = /workspace)
 docker compose run --rm dev bash
 
+# Rust airc (preferred)
+docker compose run --rm dev cargo run -p airc -- run examples/sum.air
+
 # TypeScript airc (bootstrap)
 docker compose run --rm dev npm ci
-docker compose run --rm dev npm run airc -- run examples/sum.air.json
+docker compose run --rm dev npm run airc -- run examples/sum.air
 
-# Rust airc (production path)
+# Rust tests
 docker compose run --rm dev cargo test --workspace
 docker compose run --rm dev cargo run -p airc -- version
 ```

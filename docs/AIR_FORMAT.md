@@ -4,7 +4,7 @@ Frozen **minimal** typed AST interchange for programs that must be writable and 
 
 Status: **draft v0** — normative for the Phase 1 bootstrap subset. Larger features (generics, traits, full lifetimes, tasks) are out of this document until a later format version.
 
-Encoding: **JSON array trees** (`.air.json`, Phase 1 bootstrap) and **normalized S-expr** (`.air`, canonical text — see [ENCODING.md](ENCODING.md)). Each compound node is `[tag, ...]` / `(tag …)` with the same AST. Binary tagged AST comes later; user-defined names stay in a symbol table, not the tag enum.
+Encoding: **normalized S-expr** (`.air`) is the **default** text form for edit, PR, and agents — see [ENCODING.md](ENCODING.md). **JSON array trees** (`.air.json`) remain a legacy bootstrap / parity encoding of the same AST. Binary tagged AST (`.airb`) is a derived pack format. User-defined names stay in a symbol table, not the tag enum.
 
 ## Design goals for v0
 

@@ -30,10 +30,10 @@ Contract: [SUBSET.md](SUBSET.md). Pre-decisions: [PHASE1_DECISIONS.md](PHASE1_DE
 - Example suite in [EXAMPLES.md](EXAMPLES.md)
 - **Hosted stdout** via `cap.print` (required for example / smoke tests — not optional polish)
 - **Docker** (`Dockerfile`, `compose.yaml`) as the supported dev environment
-- **Encodings:** JSON bootstrap + **canonical S-expr** (`.air`); `airc fmt`; binary pack later
+- **Encodings:** **canonical S-expr** (`.air`) is the default for edit/PR/agents; JSON (`.air.json`) remains as legacy parity; `airc fmt`; binary pack sketch
 
 Exit criteria: see SUBSET definition of done + PHASE1_DECISIONS CLI behavior.  
-In particular: `examples/hello.air.json` prints `hello` on program stdout (asserted in tests), distinct from the CLI printing the `main` return value.
+In particular: `examples/hello.air` prints `hello` on program stdout (asserted in tests), distinct from the CLI printing the `main` return value.
 
 ### Encoding track (parallel to language features)
 
@@ -49,7 +49,8 @@ In particular: `examples/hello.air.json` prints `hello` on program stdout (asser
 | Done | User `enum` + `variant_lit` + `variant` match |
 | Done | Tuple enum payloads (`[ty...]`) |
 | Done | Field store builtin `fset` |
-| Later | Richer binary; deprecate JSON as default |
+| Done | Docs/CLI: `.air` default; JSON legacy |
+| Later | Richer binary payloads; drop `.air.json` when TS CLI is retired |
 
 ### Hosted I/O priority (do not wait for Phase 3/5)
 
@@ -67,9 +68,9 @@ In particular: `examples/hello.air.json` prints `hello` on program stdout (asser
 - Ship single binary via `Dockerfile.airc`
 - Keep TS suite as oracle until parity; then deprecate TS CLI
 - Dev workflow remains Docker-first
-- Parity includes **`cap.print` stdout** (same lines as TS for `hello.air.json`)
+- Parity includes **`cap.print` stdout** (same lines as TS for `hello.air`)
 
-Exit criteria: `docker compose run --rm airc-rs version` works; `check`/`run` on `examples/sum.air.json` matches TS results (**55**); `hello.air.json` stdout is `hello` under both CLIs.
+Exit criteria: `docker compose run --rm airc-rs version` works; `check`/`run` on `examples/sum.air` matches TS results (**55**); `hello.air` stdout is `hello` under both CLIs.
 
 ## Phase 2 — Native + freestanding
 

@@ -45,9 +45,11 @@ export function usage(): string {
   return `airc — AIR Phase 1 reference CLI
 
 Usage:
-  airc check <file.air|.air.json> [--diag=text|json]
-  airc run   <file.air|.air.json> [--diag=text|json]
+  airc check <file.air> [--diag=text|json]
+  airc run   <file.air> [--diag=text|json]
   airc version
+
+Default encoding is .air (S-expr). .air.json remains accepted for legacy parity.
 `;
 }
 

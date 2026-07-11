@@ -13,13 +13,15 @@ fn usage() -> &'static str {
 
 Usage:
   airc version
-  airc fmt    <file.air|.air.json>          # print canonical S-expr
-  airc hash   <file.air|.air.json>          # SHA-256 of structural AST
-  airc eq     <fileA> <fileB>               # exit 0 if same AST
-  airc pack   <file.air|.air.json> <out.airb>
-  airc unpack <file.airb>                   # print S-expr
-  airc check  <file.air|.air.json> [--diag=text|json]
-  airc run    <file.air|.air.json> [--diag=text|json]
+  airc fmt    <file.air>          # print canonical S-expr (.air.json legacy)
+  airc hash   <file.air>          # SHA-256 of structural AST
+  airc eq     <fileA> <fileB>     # exit 0 if same AST
+  airc pack   <file.air> <out.airb>
+  airc unpack <file.airb>         # print S-expr
+  airc check  <file.air> [--diag=text|json]
+  airc run    <file.air> [--diag=text|json]
+
+Default encoding is .air (S-expr). .air.json remains accepted for legacy parity.
 "
 }
 
