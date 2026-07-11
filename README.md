@@ -1,20 +1,34 @@
 # AIR
 
-**AI Intermediate Representation** — an AI-first language and VM.
+**AI Intermediate Representation** — a **statically typed, systems-capable general-purpose language** with an AI-first canonical AST.
 
-AIR is designed for agents that write and execute code: compact token usage, AST-native structure, and a human mnemonic layer for inspection. Human readability is secondary; machine clarity is primary.
+AIR targets C/C++/Rust-class software, including **freestanding / kernel** profiles. Precise widths (`i32`, `i64`, `f64`, …), **no GC** (ownership + borrowing + explicit allocators/arenas), dual lowering (interpreter for bring-up, **native codegen** for production).
+
+Human text syntax is not the source of truth; agents and tools emit typed AST. A mnemonic view exists for inspection.
+
+AIR is unrelated to CostGate / MCP tooling. Communication IR is a separate deferred track.
 
 ## Status
 
-Early design. Language, bytecode, and VM are under active exploration.
+Design documentation (**design v0.1 systems**). Toolchain not implemented yet. Example sketches still lag the static/systems model.
+
+## Docs
+
+| Doc | Contents |
+|-----|----------|
+| [docs/VISION.md](docs/VISION.md) | Why AIR exists; systems + AI-first goals |
+| [docs/DESIGN.md](docs/DESIGN.md) | Types, memory, profiles, lowering |
+| [docs/AI_NATIVE.md](docs/AI_NATIVE.md) | Memory, errors, process/shell, capabilities (AI-Native defaults) |
+| [docs/EXAMPLES.md](docs/EXAMPLES.md) | Sketches (pending static rewrite) |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Typed bootstrap → native/freestanding → GP growth |
 
 ## Goals
 
-- Optimize for AI generation and understanding, not human ergonomics
-- Minimize tokens per unit of meaning
-- Treat programs as explicit AST / IR, not text-first syntax
-- Provide a mnemonic view for humans (assembly-like), separate from the canonical form
-- Ship a small VM that runs AIR directly
+- Systems-capable general-purpose (including kernel/freestanding)
+- Static typing with precise numeric and pointer types
+- Explicit memory: ownership/borrow + allocators/arenas (no default GC)
+- AI-first canonical AST and token density
+- Native compilation path; interpreter only for bring-up
 
 ## Contributing
 
