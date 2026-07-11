@@ -185,6 +185,14 @@ function checkExpr(
       }
       if (callee === "ok" && argTys.length === 1) return ["result", argTys[0]!, "str"];
       if (callee === "err" && argTys.length === 1) return ["result", "i32", "str"];
+      if (
+        ["checked_add", "checked_sub", "checked_mul", "checked_div"].includes(callee) &&
+        argTys.length === 2 &&
+        tyEq(argTys[0]!, argTys[1]!) &&
+        isIntTy(argTys[0]!)
+      ) {
+        return ["result", argTys[0]!, "str"];
+      }
       if (callee === "aget" && argTys.length === 2 && Array.isArray(argTys[0]) && argTys[0][0] === "array") {
         return argTys[0][1];
       }

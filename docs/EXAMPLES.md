@@ -131,6 +131,21 @@ Requires hosted profile. Freestanding must not use `cap` print.
 
 ---
 
+## Example 5 — Checked overflow (`checked_add`)
+
+```json
+["mod", "overflow",
+  ["fn", "main", [], "i32",
+    ["match",
+      ["call", "checked_add", ["lit", "i32", "2147483647"], ["lit", "i32", "1"]],
+      [["ok", "v"], ["var", "v"]],
+      [["err", "e"], ["lit", "i32", "-1"]]]]]
+```
+
+Builtins (see [PHASE1_DECISIONS.md](PHASE1_DECISIONS.md)): `checked_add` / `checked_sub` / `checked_mul` / `checked_div` → `Result[i32, str]` (`err` on overflow or div-by-zero). Plain `+ - *` still wrap; plain `/` still aborts on div0.
+
+---
+
 ## Using these examples
 
 Runnable JSON fixtures live under [`examples/`](../examples/):
@@ -142,6 +157,7 @@ Runnable JSON fixtures live under [`examples/`](../examples/):
 | `arr.air.json` | `10` |
 | `hello.air.json` | `0` (prints `hello`) |
 | `bad_move.air.json` | **check fails** (`mem.use_after_move`) |
+| `overflow.air.json` | `-1` (`checked_add` overflow → err arm) |
 
 ```bash
 docker compose run --rm dev cargo run -p airc -- run examples/arr.air.json
