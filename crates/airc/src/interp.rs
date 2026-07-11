@@ -1,0 +1,213 @@
+use crate::parse::{find_fn, Module};
+use serde_json::Value;
+use std::collections::HashMap;
+
+#[derive(Debug, Clone)]
+pub enum AirValue {
+    I32(i32),
+    Bool(bool),
+    Str(String),
+    Ok(Box<AirValue>),
+    Err(Box<AirValue>),
+    Array(Vec<AirValue>),
+}
+
+#[derive(Debug)]
+pub enum RuntimeError {
+    Message(String),
+}
+
+impl std::fmt::Display for RuntimeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RuntimeError::Message(m) => write!(f, "{m}"),
+        }
+    }
+}
+
+#[derive(Debug)]
+enum EvalErr {
+    Break(AirValue),
+    Msg(String),
+}
+
+fn tag<'a>(v: &'a Value) -> Option<(&'a str, &'a [Value])> {
+    let arr = v.as_array()?;
+    let t = arr.first()?.as_str()?;
+    Some((t, &arr[1..]))
+}
+
+fn as_i32(v: &AirValue) -> Result<i32, EvalErr> {
+    match v {
+        AirValue::I32(n) => Ok(*n),
+        _ => Err(EvalErr::Msg("runtime.type: expected i32".into())),
+    }
+}
+
+fn lit_value(width: &str, digits: &str) -> Result<AirValue, EvalErr> {
+    if width == "bool" {
+        return Ok(AirValue::Bool(digits == "true"));
+    }
+    let n: i32 = digits
+        .parse()
+        .map_err(|_| EvalErr::Msg(format!("runtime.lit: {digits}")))?;
+    Ok(AirValue::I32(n))
+}
+
+fn eval2(
+    e: &Value,
+    env: &mut HashMap<String, AirValue>,
+    fns: &HashMap<String, &Value>,
+) -> Result<AirValue, EvalErr> {
+    if let Some(b) = e.as_bool() {
+        return Ok(AirValue::Bool(b));
+    }
+    if let Some(n) = e.as_i64() {
+        return Ok(AirValue::I32(n as i32));
+    }
+    if let Some(s) = e.as_str() {
+        return Ok(AirValue::Str(s.to_string()));
+    }
+    let (t, rest) = tag(e).ok_or_else(|| EvalErr::Msg("runtime.expr".into()))?;
+    match t {
+        "lit" => lit_value(rest[0].as_str().unwrap(), rest[1].as_str().unwrap()),
+        "var" => {
+            let name = rest[0].as_str().unwrap();
+            env.get(name)
+                .cloned()
+                .ok_or_else(|| EvalErr::Msg(format!("runtime.unbound: {name}")))
+        }
+        "seq" => {
+            let mut last = AirValue::I32(0);
+            for x in rest {
+                last = eval2(x, env, fns)?;
+            }
+            Ok(last)
+        }
+        "let" => {
+            let mut child = env.clone();
+            for b in rest[0].as_array().unwrap() {
+                let ba = b.as_array().unwrap();
+                let name = ba[0].as_str().unwrap().to_string();
+                let init = if ba.len() == 2 { &ba[1] } else { &ba[2] };
+                let v = eval2(init, &mut child, fns)?;
+                child.insert(name, v);
+            }
+            eval2(&rest[1], &mut child, fns)
+        }
+        "set!" => {
+            let name = rest[0].as_str().unwrap().to_string();
+            let v = eval2(&rest[1], env, fns)?;
+            env.insert(name, v.clone());
+            Ok(v)
+        }
+        "if" => match eval2(&rest[0], env, fns)? {
+            AirValue::Bool(true) => eval2(&rest[1], env, fns),
+            AirValue::Bool(false) => eval2(&rest[2], env, fns),
+            _ => Err(EvalErr::Msg("runtime.type: if cond".into())),
+        },
+        "loop" => loop {
+            match eval2(&rest[0], env, fns) {
+                Err(EvalErr::Break(v)) => return Ok(v),
+                Err(e) => return Err(e),
+                Ok(_) => continue,
+            }
+        },
+        "break" => Err(EvalErr::Break(eval2(&rest[0], env, fns)?)),
+        "return" => eval2(&rest[0], env, fns),
+        "call" => {
+            let callee = rest[0].as_str().unwrap();
+            let mut args = Vec::new();
+            for a in &rest[1..] {
+                args.push(eval2(a, env, fns)?);
+            }
+            match callee {
+                "+" => Ok(AirValue::I32(
+                    as_i32(&args[0])?.wrapping_add(as_i32(&args[1])?),
+                )),
+                "-" => Ok(AirValue::I32(
+                    as_i32(&args[0])?.wrapping_sub(as_i32(&args[1])?),
+                )),
+                "*" => Ok(AirValue::I32(
+                    as_i32(&args[0])?.wrapping_mul(as_i32(&args[1])?),
+                )),
+                "/" => {
+                    let b = as_i32(&args[1])?;
+                    if b == 0 {
+                        return Err(EvalErr::Msg("runtime.div0".into()));
+                    }
+                    Ok(AirValue::I32(as_i32(&args[0])? / b))
+                }
+                "<=" => Ok(AirValue::Bool(as_i32(&args[0])? <= as_i32(&args[1])?)),
+                "<" => Ok(AirValue::Bool(as_i32(&args[0])? < as_i32(&args[1])?)),
+                ">" => Ok(AirValue::Bool(as_i32(&args[0])? > as_i32(&args[1])?)),
+                ">=" => Ok(AirValue::Bool(as_i32(&args[0])? >= as_i32(&args[1])?)),
+                "==" => match (&args[0], &args[1]) {
+                    (AirValue::I32(a), AirValue::I32(b)) => Ok(AirValue::Bool(a == b)),
+                    (AirValue::Bool(a), AirValue::Bool(b)) => Ok(AirValue::Bool(a == b)),
+                    (AirValue::Str(a), AirValue::Str(b)) => Ok(AirValue::Bool(a == b)),
+                    _ => Ok(AirValue::Bool(false)),
+                },
+                "ok" => Ok(AirValue::Ok(Box::new(args[0].clone()))),
+                "err" => Ok(AirValue::Err(Box::new(args[0].clone()))),
+                other => {
+                    let f = fns
+                        .get(other)
+                        .ok_or_else(|| EvalErr::Msg(format!("runtime.unbound fn {other}")))?;
+                    let arr = f.as_array().unwrap();
+                    let mut frame = HashMap::new();
+                    for (i, p) in arr[2].as_array().unwrap().iter().enumerate() {
+                        let name = p.as_array().unwrap()[0].as_str().unwrap().to_string();
+                        frame.insert(name, args[i].clone());
+                    }
+                    eval2(&arr[4], &mut frame, fns)
+                }
+            }
+        }
+        "as" => eval2(&rest[1], env, fns),
+        "cap" => {
+            if rest[0].as_str() == Some("print") {
+                let v = eval2(&rest[1], env, fns)?;
+                match v {
+                    AirValue::Str(s) => println!("{s}"),
+                    other => println!("{other:?}"),
+                }
+            }
+            Ok(AirValue::I32(0))
+        }
+        other => Err(EvalErr::Msg(format!("runtime.unsupported {other}"))),
+    }
+}
+
+pub fn run_module(module: &Module) -> Result<AirValue, RuntimeError> {
+    let mut fns = HashMap::new();
+    for f in crate::parse::fns_in_module(module) {
+        let name = f.as_array().unwrap()[1].as_str().unwrap().to_string();
+        fns.insert(name, f);
+    }
+    let main =
+        find_fn(module, "main").ok_or_else(|| RuntimeError::Message("runtime.main".into()))?;
+    let arr = main.as_array().unwrap();
+    let mut env = HashMap::new();
+    match eval2(&arr[4], &mut env, &fns) {
+        Ok(v) => Ok(v),
+        Err(EvalErr::Break(v)) => Ok(v),
+        Err(EvalErr::Msg(m)) => Err(RuntimeError::Message(m)),
+    }
+}
+
+pub fn value_to_exit_code(v: &AirValue) -> u8 {
+    match v {
+        AirValue::I32(n) => *n as u8,
+        _ => 0,
+    }
+}
+
+pub fn print_value(v: &AirValue) {
+    match v {
+        AirValue::I32(n) => println!("{n}"),
+        AirValue::Bool(b) => println!("{b}"),
+        AirValue::Str(s) => println!("{s}"),
+        other => println!("{other:?}"),
+    }
+}
