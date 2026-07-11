@@ -41,6 +41,13 @@ jobs:
           set -e
           test "$code" -eq 55
           rm -f /tmp/airc-sum-ci
+          cargo run -q -p airc -- compile examples/sum.air --freestanding -o /tmp/airc-sum-free
+          set +e
+          /tmp/airc-sum-free
+          code=$?
+          set -e
+          test "$code" -eq 55
+          rm -f /tmp/airc-sum-free
 
       - uses: actions/setup-node@v4
         with:
