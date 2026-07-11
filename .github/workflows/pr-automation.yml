@@ -1,0 +1,47 @@
+name: PR automation
+
+# PR 作成後: レビューコメント投稿 + auto-merge キュー。
+# CI 実行とマージ判定は GitHub Actions / branch protection が担当。
+# リポジトリ設定: Settings → General → Allow auto-merge を ON。
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  pr-automation:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Post automated review comment
+        if: github.event.action == 'opened' || github.event.action == 'ready_for_review'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR=${{ github.event.pull_request.number }}
+          FILES=$(gh pr diff "$PR" --name-only | head -30)
+          gh pr comment "$PR" --body "$(cat <<EOF
+          ## Automated review
+
+          **GitHub Actions** が CI を実行し、通過後に **squash auto-merge** します。
+          Cursor / ローカルからは PR 作成まで。マージは GitHub 側で完結します。
+
+          ### Changed files
+          \`\`\`
+          ${FILES}
+          \`\`\`
+
+          > Bot による自動チェック。問題があれば PR を Close するか \`gh pr merge --disable-auto\` を実行してください。
+          EOF
+          )"
+
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr merge "${{ github.event.pull_request.number }}" --auto --squash

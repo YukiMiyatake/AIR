@@ -16,6 +16,10 @@ Early design. Language, bytecode, and VM are under active exploration.
 - Provide a mnemonic view for humans (assembly-like), separate from the canonical form
 - Ship a small VM that runs AIR directly
 
+## Contributing
+
+PR-only to `main` (no `develop`, no direct merges). See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
 TBD
