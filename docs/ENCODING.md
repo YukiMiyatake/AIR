@@ -104,18 +104,27 @@ Example (`sum`):
           (break (var s)))))))
 ```
 
-## Binary tagged AST (later)
+## Binary tagged AST (`.airb` v1 sketch)
 
 | Kind | Encoding |
 |------|----------|
-| Node tags (`Fn`, `Let`, `Call`, …) | Closed `u8`/`u16` enum per air-format version |
-| User / path / field names | Interned symbol table; nodes store IDs |
-| Literals | Typed payloads (i32, bytes, …) |
+| Header | magic `AIRB` + `u8` version `1` |
+| Symbol table | `u32` count + (`u16` len + UTF-8)* — **user names, field names, string lits** |
+| Node tags (`fn`, `let`, `call`, …) | Closed `KNOWN_TAGS` index via opcode `0x40` (not in the symbol table as the tag atom) |
+| Other arrays | opcode `0x05` + length + children |
+| Numbers / bools | `i64` / bool opcodes |
 
 **User-defined types do not expand the tag enum.**  
-`["named", "Point"]` → `NamedTy` opcode + `sym_id("Point")`.
+`["named", "Point"]` → tagged/`named` opcode path + **symbol id** for `"Point"`.
 
-PRs and agents still see S-expr; `airc pack` / `unpack` convert.
+CLI (derived artifact; not for PRs by default):
+
+```bash
+airc pack examples/sum.air /tmp/sum.airb
+airc unpack /tmp/sum.airb
+```
+
+PRs and agents still see S-expr; `pack` / `unpack` convert.
 
 ## JSON (bootstrap)
 
@@ -130,8 +139,8 @@ Retained for Phase 1 examples and TS tooling. Prefer `.air` for new fixtures onc
 | Done | `airc hash` / `airc eq` (structural AST identity) |
 | Done | Line-oriented `fmt` (head-inline / body-block for Diff) |
 | Done | TS `.air` S-expr parse (`parseModuleFile`) |
-| Next | Binary `.airb` sketch |
-| Later | Deprecate JSON as default in docs |
+| Done | Binary `.airb` v1 sketch (`airc pack` / `unpack`) |
+| Later | Deprecate JSON as default in docs; richer binary payloads |
 
 ## Non-goals
 

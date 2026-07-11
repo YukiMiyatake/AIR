@@ -1,8 +1,8 @@
 //! AIR reference CLI (Rust) — Phase 1.5 parity with tools/airc for check/run.
 
 use airc::{
-    ast_digest_hex, ast_eq, emit_diags, parse_module_file, print_sexpr, print_value, run_module,
-    typecheck_module, value_to_exit_code,
+    ast_digest_hex, ast_eq, emit_diags, pack_airb, parse_module_file, print_sexpr, print_value,
+    run_module, typecheck_module, unpack_airb, value_to_exit_code,
 };
 use std::env;
 use std::fs;
@@ -13,11 +13,13 @@ fn usage() -> &'static str {
 
 Usage:
   airc version
-  airc fmt   <file.air|.air.json>           # print canonical S-expr
-  airc hash  <file.air|.air.json>           # SHA-256 of structural AST
-  airc eq    <fileA> <fileB>                # exit 0 if same AST
-  airc check <file.air|.air.json> [--diag=text|json]
-  airc run   <file.air|.air.json> [--diag=text|json]
+  airc fmt    <file.air|.air.json>          # print canonical S-expr
+  airc hash   <file.air|.air.json>          # SHA-256 of structural AST
+  airc eq     <fileA> <fileB>               # exit 0 if same AST
+  airc pack   <file.air|.air.json> <out.airb>
+  airc unpack <file.airb>                   # print S-expr
+  airc check  <file.air|.air.json> [--diag=text|json]
+  airc run    <file.air|.air.json> [--diag=text|json]
 "
 }
 
@@ -97,16 +99,16 @@ fn main() -> ExitCode {
     }
 
     match cli.cmd.as_str() {
-        "fmt" | "hash" | "check" | "run" => {
+        "fmt" | "hash" | "check" | "run" | "unpack" => {
             if cli.files.len() != 1 {
                 eprintln!("`{}` needs exactly one file", cli.cmd);
                 eprint!("{}", usage());
                 return ExitCode::from(2);
             }
         }
-        "eq" => {
+        "eq" | "pack" => {
             if cli.files.len() != 2 {
-                eprintln!("`eq` needs exactly two files");
+                eprintln!("`{}` needs exactly two files", cli.cmd);
                 eprint!("{}", usage());
                 return ExitCode::from(2);
             }
@@ -116,6 +118,46 @@ fn main() -> ExitCode {
             eprint!("{}", usage());
             return ExitCode::from(2);
         }
+    }
+
+    if cli.cmd == "unpack" {
+        let path = &cli.files[0];
+        let bytes = match fs::read(path) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("{path}: {e}");
+                return ExitCode::from(1);
+            }
+        };
+        let v = match unpack_airb(&bytes) {
+            Ok(v) => v,
+            Err(diags) => {
+                emit_diags(&diags, &cli.diag, path);
+                return ExitCode::from(1);
+            }
+        };
+        print!("{}", print_sexpr(&v));
+        return ExitCode::SUCCESS;
+    }
+
+    if cli.cmd == "pack" {
+        let module = match load_module(&cli.files[0], &cli.diag) {
+            Ok(m) => m,
+            Err(c) => return c,
+        };
+        let bytes = match pack_airb(&module.raw) {
+            Ok(b) => b,
+            Err(diags) => {
+                emit_diags(&diags, &cli.diag, &cli.files[0]);
+                return ExitCode::from(1);
+            }
+        };
+        if let Err(e) = fs::write(&cli.files[1], &bytes) {
+            eprintln!("{}: {e}", cli.files[1]);
+            return ExitCode::from(1);
+        }
+        println!("wrote {} ({} bytes)", cli.files[1], bytes.len());
+        return ExitCode::SUCCESS;
     }
 
     if cli.cmd == "eq" {
@@ -286,7 +328,7 @@ mod tests {
 
     #[test]
     fn air_matches_json_ast_for_suite() {
-        use airc::{normalize_lit_digits, parse_sexpr_value, print_sexpr};
+        use airc::{normalize_lit_digits, pack_airb, parse_sexpr_value, print_sexpr, unpack_airb};
         let names = [
             "sum", "div", "arr", "hello", "overflow", "aset", "borrow_ok", "bad_move", "bad_borrow",
         ];
@@ -308,6 +350,9 @@ mod tests {
                 ast_digest_hex(&air_mod.raw),
                 "{name}: hash mismatch"
             );
+            let packed = pack_airb(&air_mod.raw).expect("pack");
+            let unpacked = unpack_airb(&packed).expect("unpack");
+            assert_eq!(air_mod.raw, unpacked, "{name}: airb round-trip");
         }
     }
 }
