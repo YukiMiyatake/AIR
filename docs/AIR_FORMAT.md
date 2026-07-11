@@ -176,7 +176,7 @@ Callee is a string builtin:
 | `== !=` | same type (v0: primitives, `str`, pointers) | `bool` |
 | `div_s` / `rem_s` | signed ints | `Result` optional later; v0 `/` on int is **unchecked** or typecheck-forbidden toward zero — **v0 rule: `/` and `%` on integers yield the same width; division by zero is `err` via recommended `["call", "checked_div", a, b] -> Result`** |
 
-**v0 simplification:** plain `/` on integers is allowed and is **poison/abort on div-by-zero in interpreter**; prefer `checked_div` returning `["result", T, E]` in examples.
+**v0 simplification:** plain `/` on integers **aborts** on division by zero; otherwise trunc toward zero. Prefer `checked_div` → `Result`. Integer `+ - *` **wrap**. See [PHASE1_DECISIONS.md](PHASE1_DECISIONS.md).
 
 Mismatched widths require `["as", ty, expr]` first.
 

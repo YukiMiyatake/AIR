@@ -4,7 +4,8 @@
 
 It targets the same class of software as C, C++, and Rust — including **freestanding / kernel-level** code — while optimizing the **representation** for AI authors (agents) and machine clarity. It is not a dynamic scripting language and not a short-script DSL.
 
-Near-term implementation cut: [SUBSET.md](SUBSET.md).
+Near-term implementation cut: [SUBSET.md](SUBSET.md).  
+Phase 1 locked choices: [PHASE1_DECISIONS.md](PHASE1_DECISIONS.md).
 
 Human-oriented text syntax is secondary. Static types, explicit memory, and capability-gated effects are primary.
 
