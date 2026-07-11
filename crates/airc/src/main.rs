@@ -342,6 +342,11 @@ mod tests {
     }
 
     #[test]
+    fn fset_then_field_is_ten() {
+        assert_eq!(run_i32("examples/fset.air"), 10);
+    }
+
+    #[test]
     fn bad_enum_match_is_rejected() {
         let module = parse_module_file(
             "examples/bad_enum_match.air",
@@ -360,7 +365,7 @@ mod tests {
         use airc::{normalize_lit_digits, pack_airb, parse_sexpr_value, print_sexpr, unpack_airb};
         let names = [
             "sum", "div", "arr", "hello", "overflow", "aset", "borrow_ok", "bad_move", "bad_borrow",
-            "point", "option", "bad_enum_match", "pair",
+            "point", "option", "bad_enum_match", "pair", "fset",
         ];
         for name in names {
             let json_path = format!("examples/{name}.air.json");

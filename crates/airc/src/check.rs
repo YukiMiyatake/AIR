@@ -447,6 +447,58 @@ fn check_expr(
                     diags.push(err("type.call", "aset(array, idx, value)"));
                     None
                 }
+                "fset" => {
+                    if arg_tys.len() != 3 {
+                        diags.push(err("type.call", "fset(struct, field, value)"));
+                        return None;
+                    }
+                    let (pt, prest) = tag(&rest[1]).unwrap_or(("", &[]));
+                    if pt != "var" {
+                        diags.push(err(
+                            "type.call",
+                            "v0 fset place must be [\"var\", name]",
+                        ));
+                        return None;
+                    }
+                    let Some(fname) = rest[2].as_str() else {
+                        diags.push(err("type.call", "fset field must be a string name"));
+                        return None;
+                    };
+                    let Some(place_arr) = arg_tys[0].as_array() else {
+                        diags.push(err("type.call", "fset of non-struct"));
+                        return None;
+                    };
+                    if place_arr.first().and_then(|x| x.as_str()) != Some("named")
+                        || place_arr.len() < 2
+                    {
+                        diags.push(err("type.call", "fset of non-named type"));
+                        return None;
+                    }
+                    let ty_name = place_arr[1].as_str().unwrap();
+                    let Some(fields) = structs.get(ty_name) else {
+                        diags.push(err(
+                            "type.unbound",
+                            format!("unknown struct `{ty_name}`"),
+                        ));
+                        return None;
+                    };
+                    let Some((_, fty)) = fields.iter().find(|(n, _)| n == fname) else {
+                        diags.push(err(
+                            "type.field",
+                            format!("unknown field `{fname}` on `{ty_name}`"),
+                        ));
+                        return None;
+                    };
+                    if !ty_eq(fty, &arg_tys[2]) {
+                        diags.push(err(
+                            "type.mismatch",
+                            format!("fset field `{fname}` type mismatch"),
+                        ));
+                        return None;
+                    }
+                    let _ = prest;
+                    Some(Value::String("i32".into()))
+                }
                 other => {
                     let f = fns.get(other);
                     let Some(f) = f else {

@@ -61,6 +61,7 @@ This is intentionally stricter than Rust — easier for agents; expand later.
 ## Arrays
 
 - `[T; N]` in a local is one place; `aset` requires no active borrow of that local (v0: treat whole array as the place).
+- A struct local is one place; `fset` updates a field through `["var", name]` (v0: treat whole struct as the place for borrow).
 - `aget` by value on `Copy` elements copies; on affine elements moves out (v0: only `Copy` elements in examples).
 
 ## Function calls and ownership

@@ -188,6 +188,7 @@ Mismatched widths require `["as", ty, expr]` first.
 | `checked_add` / `checked_sub` / `checked_mul` / `checked_div` | `i32 × i32 → Result[i32, str]`; `err` on overflow or div-by-zero |
 | `aget` | `aget(arr, idx)` element load for `[T; N]` (OOB: interpreter abort in v0) |
 | `aset` | `aset(arr, idx, v)` element store; v0 first arg must be `["var", name]`; returns `i32` `0` |
+| `fset` | `fset(struct, field, v)` field store; v0 first arg must be `["var", name]`; field is a string name; returns `i32` `0` |
 
 ## Function pointer / vtable values (shape only)
 
@@ -217,7 +218,8 @@ Match: `["variant", enum_name, variant_name, bind...]` — one bind name per pay
 ```
 
 `place` must have type `["named", StructName]`. Returns the field type.  
-v0: all-`Copy` field structs are `Copy`; field reads of `Copy` fields do not move the struct.
+v0: all-`Copy` field structs are `Copy`; field reads of `Copy` fields do not move the struct.  
+Field store: builtin `fset` (see builtins table).
 
 ## Complete minimal example (sum 1..10)
 
