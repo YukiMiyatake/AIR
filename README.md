@@ -22,6 +22,8 @@ Design documentation (**design v0.1 systems**). Toolchain not implemented yet. E
 | [docs/AIR_FORMAT.md](docs/AIR_FORMAT.md) | Minimal typed AST schema (air-format v0) |
 | [docs/OWNERSHIP.md](docs/OWNERSHIP.md) | v0 ownership, `set!`, lexical borrows |
 | [docs/ABSTRACTION.md](docs/ABSTRACTION.md) | Capability vs trait vs vtable layering |
+| [docs/SUBSET.md](docs/SUBSET.md) | Phase 1 bootstrap in/out cut |
+| [docs/CONCURRENCY.md](docs/CONCURRENCY.md) | Hosted tasks/channels + Alloc |
 | [docs/EXAMPLES.md](docs/EXAMPLES.md) | air-format v0 example suite |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Typed bootstrap → native/freestanding → GP growth |
 

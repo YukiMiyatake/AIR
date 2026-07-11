@@ -135,6 +135,8 @@ Ambient authority (any function can `open` / `connect`) is **rejected** for host
 
 Shared mutable state across tasks requires synchronization types or `unsafe`. Ownership rules still apply.
 
+**Allocation:** channel buffers and spawn captures use an explicit **`Alloc`** — see [CONCURRENCY.md](CONCURRENCY.md). Not part of Phase 1 ([SUBSET.md](SUBSET.md)).
+
 **Why AI Native:** channels keep cross-task dataflow explicit; freestanding avoids a hidden scheduler the kernel did not ask for.
 
 ---
