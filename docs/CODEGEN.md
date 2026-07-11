@@ -44,10 +44,11 @@ Cranelift IR
 - JIT-run parameterless `main`
 - `-o file.o` → relocatable object; other `-o path` → hosted binary via `cc`
 - `--freestanding -o path` → Linux x86_64 / aarch64 `_start` (call `main`, `SYS_exit`) + static link without libc
+- Hosted `cap.print` of **string literals** via libc `puts` (rejected under `--freestanding`)
 
 **Out (later)**
 
-- `cap.*` native glue, user fn calls, `match`, arrays, `struct` / `enum`, strings
+- `cap.print` of non-literal strings / richer caps; user fn calls, `match`, arrays, `struct` / `enum`
 - Freestanding on non-Linux hosts
 - Full LLVM path; generics / traits; tasks / channels
 
@@ -92,5 +93,5 @@ ok: compiled module sum (jit main => 55) [freestanding] -> /tmp/sum-free
 ## Open questions
 
 1. ~~Object format~~ — `.o` + system `cc` for hosted binaries (done)
-2. Hosted runtime for `cap.print`: thin `libc`/`std` glue vs keep interpreter-only for I/O in MVP?
+2. ~~Hosted `cap.print`~~ — libc `puts` for string literals (done); richer values later
 3. ~~Freestanding `_start`~~ — Linux x86_64 / aarch64 done; other targets later

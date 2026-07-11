@@ -48,6 +48,10 @@ jobs:
           set -e
           test "$code" -eq 55
           rm -f /tmp/airc-sum-free
+          cargo run -q -p airc -- compile examples/hello.air -o /tmp/airc-hello-ci
+          out=$(/tmp/airc-hello-ci)
+          test "$out" = "hello"
+          rm -f /tmp/airc-hello-ci
 
       - uses: actions/setup-node@v4
         with:
