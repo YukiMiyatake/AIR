@@ -36,7 +36,7 @@ Toolchain emits **JSON Lines** (one object per diagnostic) on stderr when `--dia
   "code": "mem.use_after_move",
   "severity": "error",
   "message": "use of moved local `x`",
-  "path": "examples/sum.air.json",
+  "path": "examples/sum.air",
   "span": { "offset": 0, "length": 0 }
 }
 ```
@@ -62,31 +62,35 @@ Stable code families:
 | Phase 1 bootstrap | **TypeScript / Node** | `tools/airc/` |
 | Phase 1.5+ production | **Rust** | `crates/airc/` |
 
-TS exists for fast JSON-AST bootstrap only. Production `airc` is Rust (speed, single binary, native codegen).  
-**Docker is the supported way to develop** — see [TOOLING.md](TOOLING.md).
+TS exists for fast bootstrap only. Production `airc` is Rust (speed, single binary, native codegen).  
+**Docker is the supported way to develop** — see [TOOLING.md](TOOLING.md).  
+Canonical program text is **`.air`**; `.air.json` is legacy parity ([ENCODING.md](ENCODING.md)).
 
 ## 6. CLI sketch
 
 TypeScript (bootstrap):
 
 ```text
-npm run airc -- check <file.air.json>
-npm run airc -- run   <file.air.json>
+npm run airc -- check <file.air>
+npm run airc -- run   <file.air>
 ```
 
-Rust (scaffold → parity):
+Rust:
 
 ```text
 cargo run -p airc -- version
-cargo run -p airc -- check <file.air.json>   # TODO Phase 1.5
+cargo run -p airc -- check <file.air>
+cargo run -p airc -- run   <file.air>
 ```
 
 Docker:
 
 ```text
-docker compose run --rm dev npm run airc -- run examples/sum.air.json
-docker compose run --rm dev cargo run -p airc -- version
+docker compose run --rm dev cargo run -p airc -- run examples/sum.air
+docker compose run --rm dev npm run airc -- run examples/sum.air
 ```
+
+`.air.json` remains accepted where noted; prefer `.air` for new work.
 
 Exit codes: `0` ok; `1` check/runtime failure; `2` CLI usage error.  
 For `run`, after a successful program, process status follows §2.

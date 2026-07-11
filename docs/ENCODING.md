@@ -8,9 +8,9 @@ The language’s source of truth is the **AST**, not a particular file syntax. E
 
 | Layer | Role | Human / git Diff | Token density | Status |
 |-------|------|------------------|---------------|--------|
-| **Canonical text: normalized S-expr** (`.air`) | Edit, PR, agent I/O, line-oriented review | Strong (1 node ≈ 1 line when formatted) | Good (no keyword quotes) | **v0.1 target** (shipping now for `sum`) |
-| **JSON array tree** (`.air.json`) | Phase 1 bootstrap wire format | Weaker (brackets/commas) | Poor | **v0 bootstrap** (still supported) |
-| **Binary tagged AST** (`.airb` later) | Cache, distribution, fast load | Not for PR review | Best | Later (`airc pack`) |
+| **Canonical text: normalized S-expr** (`.air`) | Edit, PR, agent I/O, line-oriented review | Strong (1 node ≈ 1 line when formatted) | Good (no keyword quotes) | **Default** |
+| **JSON array tree** (`.air.json`) | Legacy bootstrap / TS parity fixtures | Weaker (brackets/commas) | Poor | **Supported, not default** |
+| **Binary tagged AST** (`.airb`) | Cache, distribution, fast load | Not for PR review | Best | Sketch (`airc pack`) |
 | **Mnemonic view** | Human inspection | Strong | N/A (view only) | Documented in EXAMPLES |
 
 ```text
@@ -126,9 +126,10 @@ airc unpack /tmp/sum.airb
 
 PRs and agents still see S-expr; `pack` / `unpack` convert.
 
-## JSON (bootstrap)
+## JSON (legacy bootstrap)
 
-Retained for Phase 1 examples and TS tooling. Prefer `.air` for new fixtures once `fmt` / parse are stable. Both decode to the same AST.
+Still accepted by `airc` for parity with early Phase 1 fixtures and TS oracle tests.  
+**Do not author new programs or PR diffs in `.air.json`.** Prefer `.air` (and `airc fmt`). Both decode to the same AST.
 
 ## Tooling roadmap
 
@@ -140,7 +141,8 @@ Retained for Phase 1 examples and TS tooling. Prefer `.air` for new fixtures onc
 | Done | Line-oriented `fmt` (head-inline / body-block for Diff) |
 | Done | TS `.air` S-expr parse (`parseModuleFile`) |
 | Done | Binary `.airb` v1 sketch (`airc pack` / `unpack`) |
-| Later | Deprecate JSON as default in docs; richer binary payloads |
+| Done | Docs/CLI: `.air` is the default; JSON is legacy |
+| Later | Richer binary payloads; drop `.air.json` fixtures when TS CLI is retired |
 
 ## Non-goals
 

@@ -29,19 +29,20 @@ jobs:
       - name: CLI smoke (TS)
         run: |
           set +e
-          npm run airc -- run examples/sum.air.json
+          npm run airc -- run examples/sum.air
           code=$?
           set -e
-          # sum.air.json returns 55; that is the process status (PHASE1_DECISIONS), not a CLI failure.
+          # sum.air returns 55; that is the process status (PHASE1_DECISIONS), not a CLI failure.
           test "$code" -eq 55
+          # legacy .air.json still accepted
           set +e
-          npm run -s airc -- run examples/sum.air
+          npm run -s airc -- run examples/sum.air.json
           code=$?
           set -e
           test "$code" -eq 55
           # ownership negative: use-after-move must fail check
           set +e
-          npm run airc -- check examples/bad_move.air.json
+          npm run airc -- check examples/bad_move.air
           code=$?
           set -e
           test "$code" -ne 0

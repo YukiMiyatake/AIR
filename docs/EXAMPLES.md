@@ -181,7 +181,7 @@ Held shared borrow via `let` forbids `set!` on the place until the binding ends:
           ["lit", "i32", "0"]]]]]]
 ```
 
-After the inner `let` ends, `set!` / use is allowed again (`borrow_ok.air.json` → `7`).
+After the inner `let` ends, `set!` / use is allowed again (`borrow_ok.air` → `7`).
 
 ---
 
@@ -261,7 +261,7 @@ v0: first argument must be `["var", name]`. Returns `i32` `0` from `fset`; examp
 
 ## Using these examples
 
-Primary fixtures are **S-expr** (`.air`). JSON (`.air.json`) remains for the TS bootstrap and parity checks — see [ENCODING.md](ENCODING.md).
+Primary fixtures are **S-expr** (`.air`). JSON (`.air.json`) is **legacy parity** for the TS bootstrap — do not author new examples in JSON — see [ENCODING.md](ENCODING.md).
 
 | File | Expected `main` result |
 |------|-------------------------|
@@ -282,9 +282,9 @@ Primary fixtures are **S-expr** (`.air`). JSON (`.air.json`) remains for the TS 
 
 ```bash
 docker compose run --rm dev cargo run -p airc -- run examples/arr.air
-docker compose run --rm dev cargo run -p airc -- fmt examples/sum.air.json
+docker compose run --rm dev cargo run -p airc -- fmt examples/sum.air
 ```
 
 - Token benchmarks: minify JSON AST vs S-expr vs equivalent Rust/C for the same suite.
-- Round-trip: `.air` AST must match sibling `.air.json` (tested in Rust).
+- Round-trip: `.air` AST must match sibling `.air.json` (tested in Rust) until JSON fixtures are retired.
 - Do not reintroduce dynamic `list` / untyped `num` / ad-hoc `host` tags.
