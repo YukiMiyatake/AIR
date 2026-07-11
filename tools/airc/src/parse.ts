@@ -1,6 +1,7 @@
 import type { Diagnostic } from "./diag.js";
 import type { Expr, FnItem, Item, Module, Ty } from "./ast.js";
 import { isTagged } from "./ast.js";
+import { normalizeLitDigits, parseSexprValue } from "./sexpr.js";
 
 export type ParseResult =
   | { ok: true; module: Module }
@@ -359,4 +360,30 @@ export function parseModuleJson(text: string): ParseResult {
     };
   }
   return parseModule(data);
+}
+
+/** Parse `.air.json` (JSON) or `.air` (S-expr) into a Module. */
+export function parseModuleFile(path: string, text: string): ParseResult {
+  if (path.endsWith(".air.json")) {
+    return parseModuleJson(text);
+  }
+  if (path.endsWith(".air")) {
+    const sx = parseSexprValue(text);
+    if (!sx.ok) {
+      return {
+        ok: false,
+        diags: sx.diags.map((d) => ({
+          severity: d.severity as "error",
+          code: d.code,
+          message: d.message,
+        })),
+      };
+    }
+    return parseModule(normalizeLitDigits(sx.value));
+  }
+  const asJson = parseModuleJson(text);
+  if (asJson.ok) return asJson;
+  const sx = parseSexprValue(text);
+  if (!sx.ok) return asJson;
+  return parseModule(normalizeLitDigits(sx.value));
 }

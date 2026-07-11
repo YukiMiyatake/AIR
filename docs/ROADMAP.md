@@ -43,7 +43,8 @@ In particular: `examples/hello.air.json` prints `hello` on program stdout (asser
 | Done | Rust `fmt` + `.air` parse; all Phase 1 `examples/*.air` |
 | Done | `airc hash` / `airc eq` |
 | Done | Line-oriented `fmt` polish |
-| Next | TS `.air` parse (optional) |
+| Done | TS `.air` parse |
+| Next | Binary `.airb` sketch (optional) |
 | Later | Binary `.airb` pack (syntax tags only; symbols interned) |
 
 ### Hosted I/O priority (do not wait for Phase 3/5)

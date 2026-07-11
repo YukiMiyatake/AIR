@@ -5,11 +5,24 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { typecheckModule } from "./check.js";
 import { runModule, withStdoutCapture } from "./interp.js";
-import { parseModuleJson } from "./parse.js";
+import { parseModuleFile, parseModuleJson } from "./parse.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 
-test("check+run sum = 55", () => {
+test("check+run sum.air = 55", () => {
+  const text = readFileSync(join(root, "examples/sum.air"), "utf8");
+  const parsed = parseModuleFile("examples/sum.air", text);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const checked = typecheckModule(parsed.module);
+  assert.equal(checked.ok, true);
+  if (!checked.ok) return;
+  const v = runModule(parsed.module);
+  assert.equal(v.tag, "i32");
+  if (v.tag === "i32") assert.equal(v.v, 55);
+});
+
+test("check+run sum.air.json = 55", () => {
   const text = readFileSync(join(root, "examples/sum.air.json"), "utf8");
   const parsed = parseModuleJson(text);
   assert.equal(parsed.ok, true);
@@ -33,9 +46,9 @@ test("check rejects use-after-move", () => {
   assert.ok(checked.diags.some((d) => d.code === "mem.use_after_move"));
 });
 
-test("hello prints to program stdout", () => {
-  const text = readFileSync(join(root, "examples/hello.air.json"), "utf8");
-  const parsed = parseModuleJson(text);
+test("hello.air prints to program stdout", () => {
+  const text = readFileSync(join(root, "examples/hello.air"), "utf8");
+  const parsed = parseModuleFile("examples/hello.air", text);
   assert.equal(parsed.ok, true);
   if (!parsed.ok) return;
   assert.equal(typecheckModule(parsed.module).ok, true);

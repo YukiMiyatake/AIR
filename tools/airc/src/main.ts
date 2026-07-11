@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { typecheckModule } from "./check.js";
 import { emitDiags } from "./diag.js";
 import { runModule, valueToExitCode } from "./interp.js";
-import { parseModuleJson } from "./parse.js";
+import { parseModuleFile } from "./parse.js";
 
 export type DiagMode = "text" | "json";
 
@@ -45,8 +45,8 @@ export function usage(): string {
   return `airc — AIR Phase 1 reference CLI
 
 Usage:
-  airc check <file.air.json> [--diag=text|json]
-  airc run   <file.air.json> [--diag=text|json]
+  airc check <file.air|.air.json> [--diag=text|json]
+  airc run   <file.air|.air.json> [--diag=text|json]
   airc version
 `;
 }
@@ -82,7 +82,7 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   const text = await readFile(opts.file, "utf8");
-  const parsed = parseModuleJson(text);
+  const parsed = parseModuleFile(opts.file, text);
   if (!parsed.ok) {
     emitDiags(parsed.diags, opts.diag, opts.file);
     return 1;
