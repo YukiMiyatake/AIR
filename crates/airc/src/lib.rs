@@ -11,7 +11,7 @@ pub mod sexpr;
 
 pub use airb::{pack_airb, unpack_airb, KNOWN_TAGS};
 pub use check::typecheck_module;
-pub use codegen::{compile_module, CompileOutcome};
+pub use codegen::{compile_module, CompileOutcome, CompileOutputKind};
 pub use diag::{emit_diags, Diagnostic, DiagMode};
 pub use hash::{ast_digest_hex, ast_eq};
 pub use interp::{print_value, run_module, value_to_exit_code, with_stdout_capture, AirValue};
