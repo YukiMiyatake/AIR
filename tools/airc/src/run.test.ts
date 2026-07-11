@@ -21,3 +21,14 @@ test("check+run sum = 55", () => {
   assert.equal(v.tag, "i32");
   if (v.tag === "i32") assert.equal(v.v, 55);
 });
+
+test("check rejects use-after-move", () => {
+  const text = readFileSync(join(root, "examples/bad_move.air.json"), "utf8");
+  const parsed = parseModuleJson(text);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const checked = typecheckModule(parsed.module);
+  assert.equal(checked.ok, false);
+  if (checked.ok) return;
+  assert.ok(checked.diags.some((d) => d.code === "mem.use_after_move"));
+});

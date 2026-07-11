@@ -140,6 +140,7 @@ Runnable JSON fixtures live under [`examples/`](../examples/):
 | `div.air.json` | `-1` (div by zero → err arm) |
 | `arr.air.json` | `10` |
 | `hello.air.json` | `0` (prints `hello`) |
+| `bad_move.air.json` | **check fails** (`mem.use_after_move`) |
 
 ```bash
 docker compose run --rm dev cargo run -p airc -- run examples/arr.air.json
