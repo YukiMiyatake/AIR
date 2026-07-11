@@ -12,8 +12,8 @@ Full product goals remain in [VISION.md](VISION.md); this file is the **near-ter
 | Control | `seq` `let` `set!` `var` `if` `loop` `break` `return` `call` `match` `as` |
 | Memory | [OWNERSHIP.md](OWNERSHIP.md) v0 moves + lexical borrows; **no heap libraries required** |
 | Effects | optional `cap.print` for hosted hello |
-| Tooling | parse → typecheck → ownership check → interpret examples in [EXAMPLES.md](EXAMPLES.md) |
-| Lowering | interpreter only (native is Phase 2) |
+| Tooling | parse → typecheck → ownership check → interpret examples in [EXAMPLES.md](EXAMPLES.md); CLI per [PHASE1_DECISIONS.md](PHASE1_DECISIONS.md) |
+| Lowering | **AST interpreter** only (TypeScript reference under `tools/airc`) |
 
 ## Explicitly out of Phase 1
 

@@ -10,6 +10,7 @@ Phased plan toward a **statically typed, systems-capable** AIR (userland + frees
 - [OWNERSHIP.md](OWNERSHIP.md) — v0 move/`set!`/borrow operational rules
 - [ABSTRACTION.md](ABSTRACTION.md) — capability vs trait vs vtable
 - [SUBSET.md](SUBSET.md) — **Phase 1 in/out cut**
+- [PHASE1_DECISIONS.md](PHASE1_DECISIONS.md) — overflow, main exit, diagnostics, interpreter
 - [CONCURRENCY.md](CONCURRENCY.md) — hosted tasks/channels + Alloc (Phase 4)
 - [AI_NATIVE.md](AI_NATIVE.md) — errors, process/shell, capabilities, concurrency defaults
 - [EXAMPLES.md](EXAMPLES.md) — air-format v0 example suite
@@ -17,15 +18,15 @@ Phased plan toward a **statically typed, systems-capable** AIR (userland + frees
 
 ## Phase 1 — Typed bootstrap
 
-Contract: [SUBSET.md](SUBSET.md).
+Contract: [SUBSET.md](SUBSET.md). Pre-decisions: [PHASE1_DECISIONS.md](PHASE1_DECISIONS.md).
 
-- **[AIR_FORMAT.md](AIR_FORMAT.md) air-format v0** — minimal typed AST (includes `match`, `str`, typed literals)
-- Typechecker (no execution of ill-typed programs)
-- Ownership/move + lexical borrows (minimal lifetime system) per [OWNERSHIP.md](OWNERSHIP.md)
-- Interpreter for typed subset (bring-up only); **no** tasks/channels/heap libs required
+- **[AIR_FORMAT.md](AIR_FORMAT.md) air-format v0** — minimal typed AST
+- Typechecker + ownership check ([OWNERSHIP.md](OWNERSHIP.md))
+- **AST interpreter** (no bytecode in Phase 1); TypeScript reference CLI under `tools/airc`
+- Overflow / `main` exit / JSON diagnostics per PHASE1_DECISIONS
 - Example suite in [EXAMPLES.md](EXAMPLES.md)
 
-Exit criteria: see SUBSET definition of done.
+Exit criteria: see SUBSET definition of done + PHASE1_DECISIONS CLI behavior.
 
 ## Phase 2 — Native + freestanding
 
