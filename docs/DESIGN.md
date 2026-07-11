@@ -1,21 +1,25 @@
 # AIR Design
 
-Fixed design decisions for the **execution IR**. Changing these requires a roadmap version bump and an explicit design note.
+Fixed design decisions for AIR as a **general-purpose language** whose canonical form is an execution IR. Changing these requires a roadmap version bump and an explicit design note.
 
 Status: design-only (no VM implementation yet).
+
+**Product identity:** general-purpose (applications, libraries, concurrent programs). AI-first AST / mnemonic / token density are the representation strategy — not a limit on program size or domain.
+
+**MVP vs target:** early phases ship a **bootstrap subset**. Omissions in the subset are delivery order, not “AIR does not need this.”
 
 ## Pipeline
 
 ```
-Agent emits/edits  →  Canonical AST  →  Bytecode  →  AIR VM  →  Host API
-                         ↓
-                   Mnemonic view (inspect / debug)
+Author (agent or tool)  →  Canonical AST  →  Bytecode  →  AIR VM  →  Host / capabilities
+                              ↓
+                        Mnemonic view (inspect / debug)
 ```
 
-- Agents read and write **canonical AST**.
-- Humans primarily read **mnemonic**.
+- Authors read and write **canonical AST** (agents directly; humans via tools or mnemonic round-trip).
+- Humans primarily inspect **mnemonic**.
 - The VM runs **bytecode** encoded from AST.
-- All I/O goes through **host** calls.
+- Effectful I/O and OS facilities go through **host / capability** calls.
 
 ## Value model
 
@@ -47,9 +51,9 @@ Fallible operations return a **result** value:
 ## Execution model
 
 - **Bytecode VM** with an operand **stack** and **local slots** per call frame.
-- Programs are a single module with entry function `main` (arity 0 in MVP; args via host later).
-- **No closures** in phase 1 — nested functions may exist as top-level `fn` entries only; no free-variable capture.
-- Evaluation is single-threaded and deterministic given a fixed sequence of host replies.
+- Entry via `main` (MVP: arity 0; later: args / runtime init).
+- **Closures:** required for a general-purpose AIR. **Bootstrap (Phase 1):** top-level `fn` only, no free-variable capture. **Target:** first-class closures / lambdas with upvalues (see [ROADMAP.md](ROADMAP.md)).
+- **Concurrency:** required for a general-purpose AIR when throughput and latency matter. **Bootstrap:** single task, deterministic given host replies. **Target model:** lightweight concurrent tasks (**goroutine-like** M:N scheduling) plus **channels** for communication; shared-memory mutation across tasks is restricted until a memory model is specified. Fairness and scheduling details land with the concurrency milestone — not “host-only parallelism forever.”
 
 ### Control forms (AST)
 
@@ -156,28 +160,42 @@ Example:
 ["host", "print", ["call", "+", "hello ", name]]
 ```
 
-## Modules and linkage (MVP)
+## Modules and linkage
 
-- Single module per run.
-- No import / multi-file (phase 2).
-- No package registry.
+- **Bootstrap:** single module per run.
+- **Target:** multi-file modules, imports, and a package story suitable for general-purpose codebases.
 
-## Builtins (MVP set)
+## Builtins
 
-Enough for examples and agent loops:
+**Bootstrap set** (enough to run the example suite and bring up the VM):
 
 - Arithmetic / compare as above
 - `len`, `get`, `set` (list/map), `push`
 - `str` coercion for print paths
 - Result helpers: construct/match `ok` / `err`
 
-## Explicit non-goals (design)
+**Target:** a real standard library (collections algorithms, strings, concurrency primitives, I/O wrappers over capabilities) — grown deliberately, still AST-friendly and token-dense. LINQ-style query comprehension sugar is optional later; library APIs can cover much of that ground first.
 
-- Closures / upvalues (phase 2+)
-- Exceptions, `try`/`catch`
-- JIT / GC productization
-- Human sugar syntax as canonical form
+## Paradigm (target)
+
+- **Primary:** imperative, expression-oriented, procedure/function based (not class-OOP).
+- **Functional features:** first-class functions and closures are in scope; purity is not mandated.
+- **OOP:** no user classes/prototypes in early design; composition via `map` / modules / functions. Revisit only with a strong need.
+- **Errors:** result tags remain the default; a future `try`-like sugar must desugar to results (no silent unwind culture).
+
+## Explicit non-goals (representation / product)
+
+- Human sugar syntax as the **canonical** form
 - Required interop transpile to Python/JS
+- Class-based OOP as the core model (unless later redesign)
+
+## Deferred engineering (not “unwanted”)
+
+- Closures / upvalues (after bootstrap VM)
+- Lightweight tasks + channels (after closures/modules foundation)
+- JIT / production GC
+- Optional static checking
+- Rich standard library
 
 ## Versioning
 

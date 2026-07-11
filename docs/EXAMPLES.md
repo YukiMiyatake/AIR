@@ -1,6 +1,8 @@
 # AIR Examples
 
-Same programs shown as **canonical AST**, **mnemonic view**, and a **bytecode sketch**. These are informative sketches until the MVP compiler exists; they must stay consistent with [DESIGN.md](DESIGN.md).
+Same programs shown as **canonical AST**, **mnemonic view**, and a **bytecode sketch**. These are informative sketches until the bootstrap compiler exists; they must stay consistent with [DESIGN.md](DESIGN.md).
+
+These examples are small for clarity. They do **not** imply AIR is limited to short scripts — see [VISION.md](VISION.md) (general-purpose language).
 
 ## Example 1 — Sum 1..n
 
