@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # AIR development image: Rust (production airc) + Node (Phase 1 TS bootstrap).
-FROM rust:1.85-bookworm
+FROM rust:1.93-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \

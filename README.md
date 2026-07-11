@@ -35,7 +35,7 @@ docker compose run --rm dev npm test
 
 ## Local (optional)
 
-Rust 1.85+ for `crates/airc`; Node 22+ for the TS oracle. Prefer Docker if toolchains differ.
+Rust 1.93+ for `crates/airc` (Cranelift); Node 22+ for the TS oracle. Prefer Docker if toolchains differ.
 
 ```bash
 cargo test --workspace && cargo run -p airc -- run examples/sum.air

@@ -20,7 +20,7 @@ Usage:
   airc unpack  <file.airb>         # print S-expr
   airc check   <file.air|.airb> [--diag=text|json]
   airc run     <file.air|.airb> [--diag=text|json]
-  airc compile <file.air|.airb> [--diag=text|json]  # Phase 2 stub (Cranelift)
+  airc compile <file.air|.airb> [--diag=text|json]  # Phase 2 Cranelift (sum-class)
 
 Default text encoding is .air (S-expr). .airb is accepted for check/run/fmt/hash/eq/compile.
 .air.json remains accepted for legacy parity.
