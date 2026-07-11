@@ -59,35 +59,29 @@ Stable code families:
 
 | Stage | Host language | Location |
 |-------|---------------|----------|
-| Phase 1 bootstrap | **TypeScript / Node** | `tools/airc/` |
-| Phase 1.5+ production | **Rust** | `crates/airc/` |
+| **Primary (Phase 1.5+)** | **Rust** | `crates/airc/` |
+| Oracle / bootstrap suite | TypeScript / Node | `tools/airc/` |
 
-TS exists for fast bootstrap only. Production `airc` is Rust (speed, single binary, native codegen).  
+Production `airc` is Rust (speed, single binary, native codegen). The TS package remains a regression oracle.  
 **Docker is the supported way to develop** — see [TOOLING.md](TOOLING.md).  
 Canonical program text is **`.air`**; `.air.json` is legacy parity ([ENCODING.md](ENCODING.md)).
 
 ## 6. CLI sketch
 
-TypeScript (bootstrap):
-
-```text
-npm run airc -- check <file.air>
-npm run airc -- run   <file.air>
-```
-
-Rust:
+Rust (primary):
 
 ```text
 cargo run -p airc -- version
 cargo run -p airc -- check <file.air>
 cargo run -p airc -- run   <file.air>
+docker compose run --rm airc-rs run examples/sum.air
 ```
 
-Docker:
+TypeScript (oracle; optional):
 
 ```text
-docker compose run --rm dev cargo run -p airc -- run examples/sum.air
-docker compose run --rm dev npm run airc -- run examples/sum.air
+npm run airc -- check <file.air>
+npm run airc -- run   <file.air>
 ```
 
 `.air.json` remains accepted where noted; prefer `.air` for new work.
