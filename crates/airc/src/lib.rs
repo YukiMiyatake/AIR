@@ -2,12 +2,14 @@
 
 pub mod check;
 pub mod diag;
+pub mod hash;
 pub mod interp;
 pub mod parse;
 pub mod sexpr;
 
 pub use check::typecheck_module;
 pub use diag::{emit_diags, Diagnostic, DiagMode};
+pub use hash::{ast_digest_hex, ast_eq};
 pub use interp::{print_value, run_module, value_to_exit_code, with_stdout_capture, AirValue};
 pub use parse::{parse_module_json, parse_module_value, Module};
 pub use sexpr::{normalize_lit_digits, parse_sexpr_value, print_sexpr};

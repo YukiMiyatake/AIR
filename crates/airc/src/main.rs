@@ -1,8 +1,8 @@
 //! AIR reference CLI (Rust) — Phase 1.5 parity with tools/airc for check/run.
 
 use airc::{
-    emit_diags, parse_module_file, print_sexpr, print_value, run_module, typecheck_module,
-    value_to_exit_code,
+    ast_digest_hex, ast_eq, emit_diags, parse_module_file, print_sexpr, print_value, run_module,
+    typecheck_module, value_to_exit_code,
 };
 use std::env;
 use std::fs;
@@ -13,19 +13,31 @@ fn usage() -> &'static str {
 
 Usage:
   airc version
-  airc fmt   <file.air|.air.json>     # print canonical S-expr
+  airc fmt   <file.air|.air.json>           # print canonical S-expr
+  airc hash  <file.air|.air.json>           # SHA-256 of structural AST
+  airc eq    <fileA> <fileB>                # exit 0 if same AST
   airc check <file.air|.air.json> [--diag=text|json]
   airc run   <file.air|.air.json> [--diag=text|json]
 "
 }
 
-fn parse_cli(args: &[String]) -> Result<(String, Option<String>, String), String> {
+struct Cli {
+    cmd: String,
+    files: Vec<String>,
+    diag: String,
+}
+
+fn parse_cli(args: &[String]) -> Result<Cli, String> {
     let mut cmd = String::new();
-    let mut file: Option<String> = None;
+    let mut files = Vec::new();
     let mut diag = "text".to_string();
     for a in args {
         if a == "-h" || a == "--help" {
-            return Ok(("help".into(), None, diag));
+            return Ok(Cli {
+                cmd: "help".into(),
+                files,
+                diag,
+            });
         }
         if let Some(v) = a.strip_prefix("--diag=") {
             if v != "text" && v != "json" {
@@ -38,18 +50,31 @@ fn parse_cli(args: &[String]) -> Result<(String, Option<String>, String), String
             cmd = a.clone();
             continue;
         }
-        if file.is_none() {
-            file = Some(a.clone());
-            continue;
-        }
-        return Err(format!("unexpected argument: {a}"));
+        files.push(a.clone());
     }
-    Ok((cmd, file, diag))
+    Ok(Cli { cmd, files, diag })
+}
+
+fn load_module(path: &str, diag: &str) -> Result<airc::Module, ExitCode> {
+    let text = match fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("{path}: {e}");
+            return Err(ExitCode::from(1));
+        }
+    };
+    match parse_module_file(path, &text) {
+        Ok(m) => Ok(m),
+        Err(diags) => {
+            emit_diags(&diags, diag, path);
+            Err(ExitCode::from(1))
+        }
+    }
 }
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
-    let (cmd, file, diag) = match parse_cli(&args) {
+    let cli = match parse_cli(&args) {
         Ok(v) => v,
         Err(e) => {
             eprintln!("{e}");
@@ -58,63 +83,79 @@ fn main() -> ExitCode {
         }
     };
 
-    if cmd.is_empty() {
+    if cli.cmd.is_empty() {
         eprint!("{}", usage());
         return ExitCode::from(2);
     }
-    if cmd == "help" {
+    if cli.cmd == "help" {
         print!("{}", usage());
         return ExitCode::SUCCESS;
     }
-    if cmd == "version" {
+    if cli.cmd == "version" {
         println!("airc {} (rust)", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
-    if cmd != "check" && cmd != "run" && cmd != "fmt" {
-        eprintln!("unknown command: {cmd}");
-        eprint!("{}", usage());
-        return ExitCode::from(2);
-    }
-    let Some(path) = file else {
-        eprintln!("missing file for `{cmd}`");
-        eprint!("{}", usage());
-        return ExitCode::from(2);
-    };
 
-    let text = match fs::read_to_string(&path) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("{path}: {e}");
-            return ExitCode::from(1);
-        }
-    };
-
-    if cmd == "fmt" {
-        let module = match parse_module_file(&path, &text) {
-            Ok(m) => m,
-            Err(diags) => {
-                emit_diags(&diags, &diag, &path);
-                return ExitCode::from(1);
+    match cli.cmd.as_str() {
+        "fmt" | "hash" | "check" | "run" => {
+            if cli.files.len() != 1 {
+                eprintln!("`{}` needs exactly one file", cli.cmd);
+                eprint!("{}", usage());
+                return ExitCode::from(2);
             }
-        };
-        print!("{}", print_sexpr(&module.raw));
-        return ExitCode::SUCCESS;
+        }
+        "eq" => {
+            if cli.files.len() != 2 {
+                eprintln!("`eq` needs exactly two files");
+                eprint!("{}", usage());
+                return ExitCode::from(2);
+            }
+        }
+        _ => {
+            eprintln!("unknown command: {}", cli.cmd);
+            eprint!("{}", usage());
+            return ExitCode::from(2);
+        }
     }
 
-    let module = match parse_module_file(&path, &text) {
-        Ok(m) => m,
-        Err(diags) => {
-            emit_diags(&diags, &diag, &path);
-            return ExitCode::from(1);
+    if cli.cmd == "eq" {
+        let a = match load_module(&cli.files[0], &cli.diag) {
+            Ok(m) => m,
+            Err(c) => return c,
+        };
+        let b = match load_module(&cli.files[1], &cli.diag) {
+            Ok(m) => m,
+            Err(c) => return c,
+        };
+        if ast_eq(&a.raw, &b.raw) {
+            println!("equal");
+            return ExitCode::SUCCESS;
         }
-    };
-
-    if let Err(diags) = typecheck_module(&module) {
-        emit_diags(&diags, &diag, &path);
+        println!("not equal");
         return ExitCode::from(1);
     }
 
-    if cmd == "check" {
+    let path = &cli.files[0];
+    let module = match load_module(path, &cli.diag) {
+        Ok(m) => m,
+        Err(c) => return c,
+    };
+
+    if cli.cmd == "fmt" {
+        print!("{}", print_sexpr(&module.raw));
+        return ExitCode::SUCCESS;
+    }
+    if cli.cmd == "hash" {
+        println!("{}", ast_digest_hex(&module.raw));
+        return ExitCode::SUCCESS;
+    }
+
+    if let Err(diags) = typecheck_module(&module) {
+        emit_diags(&diags, &cli.diag, path);
+        return ExitCode::from(1);
+    }
+
+    if cli.cmd == "check" {
         println!("ok: checked module {}", module.name);
         return ExitCode::SUCCESS;
     }
@@ -127,8 +168,8 @@ fn main() -> ExitCode {
         Err(e) => {
             emit_diags(
                 &[airc::diag::err("runtime.abort", e.to_string())],
-                &diag,
-                &path,
+                &cli.diag,
+                path,
             );
             ExitCode::from(1)
         }
@@ -138,8 +179,8 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use airc::{
-        parse_module_file, parse_module_json, run_module, typecheck_module, with_stdout_capture,
-        AirValue,
+        ast_digest_hex, parse_module_file, parse_module_json, run_module, typecheck_module,
+        with_stdout_capture, AirValue,
     };
 
     fn load(path: &str) -> String {
@@ -258,11 +299,15 @@ mod tests {
                 json_mod.raw, air_mod.raw,
                 "{name}: .air AST != .air.json AST"
             );
-            // fmt round-trip
             let printed = print_sexpr(&json_mod.raw);
             let mut back = parse_sexpr_value(&printed).expect("reparse");
             normalize_lit_digits(&mut back);
             assert_eq!(json_mod.raw, back, "{name}: fmt round-trip");
+            assert_eq!(
+                ast_digest_hex(&json_mod.raw),
+                ast_digest_hex(&air_mod.raw),
+                "{name}: hash mismatch"
+            );
         }
     }
 }

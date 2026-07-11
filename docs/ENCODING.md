@@ -33,7 +33,8 @@ The language’s source of truth is the **AST**, not a particular file syntax. E
 1. **Syntax tags are a closed set** — `fn`, `let`, `call`, `struct`, … may become compact binary opcodes. They version with air-format.
 2. **User-defined names are open** — type names, field names, variants, function names live in a **symbol / path table**. Never assign a global binary tag to `Point` / `MyError`. Binary nodes reference **name IDs** (interned strings or module-local indices).
 3. **Do not put binary in PRs by default** — review and agent patches use **normalized S-expr**. Binary is a derived artifact.
-4. **Equality is structural** — compare canonical AST (or its hash), not raw bytes of an unnormalized encoding.
+4. **Equality is structural** — compare canonical AST (or its hash), not raw bytes of an unnormalized encoding.  
+   CLI: `airc hash <file>` (SHA-256 of compact JSON of the AST value) and `airc eq <a> <b>`.
 5. **`airc fmt` is mandatory for text** — one pretty shape; no hand-formatting wars.
 
 ## Normalized S-expr (canonical text)
@@ -104,7 +105,8 @@ Retained for Phase 1 examples and TS tooling. Prefer `.air` for new fixtures onc
 |------|-------------|
 | Done | [ENCODING.md](ENCODING.md); Rust `fmt` + `.air` parse; `examples/sum.air` |
 | Done | All Phase 1 examples as `.air` (+ `.air.json` parity for TS) |
-| Next | AST hash / structural eq CLI; improve line-oriented `fmt` |
+| Done | `airc hash` / `airc eq` (structural AST identity) |
+| Next | Improve line-oriented `fmt`; TS `.air` parse (optional) |
 | Later | Binary `.airb` pack; deprecate JSON as default in docs |
 
 ## Non-goals
