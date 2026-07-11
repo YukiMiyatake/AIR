@@ -12,11 +12,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify repository layout
-        run: |
-          test -f README.md
-          test -f .gitignore
-          echo CI scaffold OK
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
 
-      - name: Placeholder checks
-        run: echo No build targets yet - scaffold pass
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: CLI smoke
+        run: npm run airc -- version

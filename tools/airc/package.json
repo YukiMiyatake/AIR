@@ -1,0 +1,21 @@
+{
+  "name": "airc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "airc": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "airc": "node dist/cli.js",
+    "test": "npm run build && node --test dist/**/*.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

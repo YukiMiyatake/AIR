@@ -10,7 +10,16 @@ AIR is unrelated to CostGate / MCP tooling. Communication IR is a separate defer
 
 ## Status
 
-Design documentation (**design v0.1 systems**). Toolchain not implemented yet. Example sketches still lag the static/systems model.
+Design documentation + **Phase 1 toolchain scaffold** (`tools/airc`, TypeScript).
+Parse/check/run land in follow-up PRs. See [docs/SUBSET.md](docs/SUBSET.md) and [docs/PHASE1_DECISIONS.md](docs/PHASE1_DECISIONS.md).
+
+## Tooling (Phase 1)
+
+```bash
+npm install
+npm run build
+npm run airc -- version
+```
 
 ## Docs
 

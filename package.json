@@ -1,0 +1,12 @@
+{
+  "name": "air",
+  "private": true,
+  "workspaces": [
+    "tools/airc"
+  ],
+  "scripts": {
+    "build": "npm run build -w tools/airc",
+    "airc": "npm run airc -w tools/airc --",
+    "test": "npm run test -w tools/airc"
+  }
+}
