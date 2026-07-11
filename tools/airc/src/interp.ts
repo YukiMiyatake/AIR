@@ -8,12 +8,32 @@ export type AirValue =
   | { tag: "err"; v: AirValue }
   | { tag: "array"; elems: AirValue[] };
 
+/** When set, `cap.print` appends here instead of writing to console. */
+let stdoutCapture: string[] | null = null;
+
+/** Run `fn` while capturing lines from `cap.print` (not CLI return-value echo). */
+export function withStdoutCapture<T>(fn: () => T): { result: T; lines: string[] } {
+  stdoutCapture = [];
+  try {
+    const result = fn();
+    return { result, lines: stdoutCapture ?? [] };
+  } finally {
+    stdoutCapture = null;
+  }
+}
+
+function hostPrintLine(line: string): void {
+  if (stdoutCapture) stdoutCapture.push(line);
+  else console.log(line);
+}
+
 class BreakSignal {
   constructor(public value: AirValue) {}
 }
 
 function litValue(width: string, digits: string): AirValue {
   if (width === "bool") return { tag: "bool", v: digits === "true" };
+  if (width === "str") return { tag: "str", v: digits };
   if (width.startsWith("f")) return { tag: "i32", v: Number(digits) }; // Phase1: store floats as number in i32 tag loosely — use i32 path for ints only in examples
   const n = Number(digits);
   return { tag: "i32", v: n | 0 };
@@ -146,8 +166,8 @@ function evalExpr(e: Expr, env: Map<string, AirValue>, fns: Map<string, FnItem>)
     case "cap": {
       if (e[1] === "print") {
         const v = evalExpr(e[2] as Expr, env, fns);
-        if (v.tag === "str") console.log(v.v);
-        else console.log(JSON.stringify(v));
+        if (v.tag === "str") hostPrintLine(v.v);
+        else hostPrintLine(JSON.stringify(v));
       }
       return { tag: "i32", v: 0 };
     }

@@ -126,7 +126,8 @@ Notes:
       ["lit", "i32", "0"]]]]
 ```
 
-Requires hosted profile. Freestanding must not use `cap` print.
+Requires hosted profile. Freestanding must not use `cap` print.  
+**Phase 1 priority:** stdout via `cap.print` is required for example/smoke tests (see [ROADMAP.md](ROADMAP.md)); do not defer it with fs/net.
 
 ---
 

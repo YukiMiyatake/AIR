@@ -123,7 +123,7 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use airc::{parse_module_json, run_module, typecheck_module, AirValue};
+    use airc::{parse_module_json, run_module, typecheck_module, with_stdout_capture, AirValue};
 
     fn load(path: &str) -> String {
         std::fs::read_to_string(path)
@@ -158,6 +158,15 @@ mod tests {
     #[test]
     fn hello_returns_zero() {
         assert_eq!(run_i32("examples/hello.air.json"), 0);
+    }
+
+    #[test]
+    fn hello_prints_to_stdout() {
+        let module = parse_module_json(&load("examples/hello.air.json")).expect("parse");
+        typecheck_module(&module).expect("check");
+        let (v, lines) = with_stdout_capture(|| run_module(&module).expect("run"));
+        assert_eq!(v, AirValue::I32(0));
+        assert_eq!(lines, vec!["hello".to_string()]);
     }
 
     #[test]

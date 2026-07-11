@@ -20,6 +20,12 @@ Agents that need safety should emit `checked_*`, not rely on wrap.
 - Interpreter CLI prints the value and exits with `status = value & 0xff` (shell-compatible).
 - Freestanding entry is out of Phase 1.
 
+### 2b. Program stdout vs CLI echo
+
+- **`["cap", "print", expr]`** writes to **program stdout** (hosted only). This is the Phase 1 effect used by examples and smoke tests.
+- The CLI’s echo of the `main` return value is **tooling output**, not a substitute for `cap.print`. Tests that care about effects must capture program stdout (or an interpreter capture hook), not only the exit code.
+- stdin / stderr / fs / net are out of Phase 1 except as later stubs; see [ROADMAP.md](ROADMAP.md) hosted I/O priority table.
+
 ## 3. Diagnostics (machine-readable)
 
 Toolchain emits **JSON Lines** (one object per diagnostic) on stderr when `--diag=json`, else human text on stderr.

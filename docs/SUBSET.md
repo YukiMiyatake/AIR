@@ -11,7 +11,7 @@ Full product goals remain in [VISION.md](VISION.md); this file is the **near-ter
 | Types | integers/floats/`bool`/`str`(hosted)/`array`/`result`/`struct`/`enum` |
 | Control | `seq` `let` `set!` `var` `if` `loop` `break` `return` `call` `match` `as` |
 | Memory | [OWNERSHIP.md](OWNERSHIP.md) v0 moves + lexical borrows; **no heap libraries required** |
-| Effects | optional `cap.print` for hosted hello |
+| Effects | **required** hosted `cap.print` → stdout (example/smoke); no fs/net/shell |
 | Tooling | parse → typecheck → ownership check → interpret examples in [EXAMPLES.md](EXAMPLES.md); CLI per [PHASE1_DECISIONS.md](PHASE1_DECISIONS.md) |
 | Lowering | **AST interpreter** only (TypeScript reference under `tools/airc`) |
 
@@ -25,12 +25,12 @@ Full product goals remain in [VISION.md](VISION.md); this file is the **near-ter
 | Tasks / channels / threads | Phase 4 (rules sketched in [CONCURRENCY.md](CONCURRENCY.md)) |
 | Freestanding kernel binary | Phase 2 |
 | Multi-file modules | Phase 3 |
-| Shell / proc / net caps | after Phase 1 (policy already in AI_NATIVE) |
+| Shell / proc / net caps | Phase 3+ / Phase 5 (policy in AI_NATIVE; stdout is **not** deferred) |
 
 ## Definition of done (Phase 1)
 
 1. All EXAMPLES modules typecheck + ownership-check under v0 rules.  
-2. Interpreter returns expected `main` results for examples 1–3; example 4 prints in hosted mode.  
+2. Interpreter returns expected `main` results for examples 1–3; example 4 (`hello`) writes `hello` to **program stdout** (tests must assert the line, not only exit code).  
 3. Ill-typed / use-after-move programs fail with stable diagnostic codes.  
 4. No GC runtime linked.
 

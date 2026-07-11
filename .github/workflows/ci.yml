@@ -40,6 +40,9 @@ jobs:
           code=$?
           set -e
           test "$code" -ne 0
+          # hosted stdout: first line from cap.print (CLI also echoes return value after)
+          out=$(npm run -s airc -- run examples/hello.air.json)
+          printf '%s\n' "$out" | head -n1 | grep -qx 'hello'
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -51,15 +54,17 @@ jobs:
       - name: CLI smoke (Rust)
         run: |
           set +e
-          cargo run -p airc -- run examples/sum.air.json
+          cargo run -q -p airc -- run examples/sum.air.json
           code=$?
           set -e
           test "$code" -eq 55
           set +e
-          cargo run -p airc -- check examples/bad_move.air.json
+          cargo run -q -p airc -- check examples/bad_move.air.json
           code=$?
           set -e
           test "$code" -ne 0
+          out=$(cargo run -q -p airc -- run examples/hello.air.json)
+          printf '%s\n' "$out" | head -n1 | grep -qx 'hello'
 
   docker:
     runs-on: ubuntu-latest

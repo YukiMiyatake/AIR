@@ -111,13 +111,14 @@ Child processes receive a **capability subset** (no ambient inheritance of full 
 
 Ambient authority (any function can `open` / `connect`) is **rejected** for hosted AIR.
 
-| Capability (examples) | Grants |
-|-----------------------|--------|
-| `cap.fs` (scoped) | Path-limited file ops |
-| `cap.net` | Connect/listen as specified |
-| `cap.proc` | Structured spawn |
-| `cap.shell` | Shell (discouraged) |
-| `cap.time` / `cap.rand` | Clock / entropy |
+| Capability (examples) | Grants | Timing |
+|-----------------------|--------|--------|
+| `cap.print` | Write to hosted stdout | **Phase 1** (examples / smoke) |
+| `cap.fs` (scoped) | Path-limited file ops | Phase 3+ |
+| `cap.net` | Connect/listen as specified | after Phase 3; HTTP/RPC → Phase 5 |
+| `cap.proc` | Structured spawn | after Phase 1 |
+| `cap.shell` | Shell (discouraged) | after Phase 1 |
+| `cap.time` / `cap.rand` | Clock / entropy | as needed |
 
 - Capabilities are **values** passed into `main` / libraries (or equivalent entry), not ambient globals.
 - `freestanding` omits hosted caps; privileged CPU/MMIO ops are separate **target intrinsics** behind `unsafe` / platform caps.
