@@ -1,5 +1,6 @@
 //! AIR toolchain library (parse / check / run).
 
+pub mod airb;
 pub mod check;
 pub mod diag;
 pub mod hash;
@@ -7,6 +8,7 @@ pub mod interp;
 pub mod parse;
 pub mod sexpr;
 
+pub use airb::{pack_airb, unpack_airb, KNOWN_TAGS};
 pub use check::typecheck_module;
 pub use diag::{emit_diags, Diagnostic, DiagMode};
 pub use hash::{ast_digest_hex, ast_eq};

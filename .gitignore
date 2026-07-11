@@ -30,3 +30,6 @@ target/
 .setup-log.txt
 HANDOFF.md
 scripts/setup-github-flow.sh
+
+# Packed AST artifacts (derived; regenerate with airc pack)
+*.airb
