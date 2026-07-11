@@ -1,0 +1,39 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: air-dev:local
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-cache:/workspace/target
+    environment:
+      CARGO_TERM_COLOR: always
+    stdin_open: true
+    tty: true
+
+  # One-shot helpers (optional)
+  airc-ts:
+    image: air-dev:local
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    entrypoint: ["npm", "run", "airc", "--"]
+    command: ["version"]
+
+  airc-rs:
+    build:
+      context: .
+      dockerfile: Dockerfile.airc
+    image: airc:local
+    volumes:
+      - ./examples:/work/examples:ro
+    working_dir: /work
+
+volumes:
+  cargo-registry:
+  cargo-git:
+  target-cache:

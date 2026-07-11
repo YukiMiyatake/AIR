@@ -1,0 +1,11 @@
+.git
+.github
+.setup
+.setup-log.txt
+HANDOFF.md
+node_modules
+tools/airc/dist
+tools/*/dist
+target
+.env
+.env.*

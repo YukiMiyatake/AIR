@@ -20,7 +20,7 @@ Thumbs.db
 .env.*
 !.env.example
 
-# Rust / Node common
-Cargo.lock
+# Node / Rust build artifacts
 node_modules/
 tools/*/dist/
+target/

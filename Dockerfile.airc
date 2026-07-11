@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1
+
+# Minimal image shipping the Rust `airc` binary.
+FROM rust:1.85-bookworm AS build
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+RUN cargo build -p airc --release && strip target/release/airc
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /src/target/release/airc /usr/local/bin/airc
+WORKDIR /work
+ENTRYPOINT ["airc"]
+CMD ["version"]

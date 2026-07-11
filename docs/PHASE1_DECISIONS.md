@@ -49,18 +49,37 @@ Stable code families:
 - **AST-walking interpreter** (no bytecode required for Phase 1).
 - Bytecode remains a later optimization / native path concern ([DESIGN.md](DESIGN.md)).
 
-## 5. Reference implementation language (Phase 1)
+## 5. Reference implementation language
 
-- Phase 1 reference toolchain is **TypeScript on Node.js** (JSON AST is native; fast to bootstrap).
-- Layout: `tools/airc/` (CLI) + packages under `tools/` as needed.
-- A Rust (or other) native compiler remains valid for Phase 2+; this does not freeze the forever implementation language.
+| Stage | Host language | Location |
+|-------|---------------|----------|
+| Phase 1 bootstrap | **TypeScript / Node** | `tools/airc/` |
+| Phase 1.5+ production | **Rust** | `crates/airc/` |
+
+TS exists for fast JSON-AST bootstrap only. Production `airc` is Rust (speed, single binary, native codegen).  
+**Docker is the supported way to develop** — see [TOOLING.md](TOOLING.md).
 
 ## 6. CLI sketch
 
+TypeScript (bootstrap):
+
 ```text
-npx airc check <file.air.json>
-npx airc run   <file.air.json>
-npx airc run   <file.air.json> --diag=json
+npm run airc -- check <file.air.json>
+npm run airc -- run   <file.air.json>
+```
+
+Rust (scaffold → parity):
+
+```text
+cargo run -p airc -- version
+cargo run -p airc -- check <file.air.json>   # TODO Phase 1.5
+```
+
+Docker:
+
+```text
+docker compose run --rm dev npm run airc -- run examples/sum.air.json
+docker compose run --rm dev cargo run -p airc -- version
 ```
 
 Exit codes: `0` ok; `1` check/runtime failure; `2` CLI usage error.  

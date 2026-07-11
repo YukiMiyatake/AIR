@@ -17,14 +17,44 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - name: Install
+      - name: Install (TS)
         run: npm ci
 
-      - name: Build
+      - name: Build (TS)
         run: npm run build
 
-      - name: Test
+      - name: Test (TS)
         run: npm test
 
-      - name: CLI smoke
-        run: npm run airc -- version
+      - name: CLI smoke (TS)
+        run: |
+          set +e
+          npm run airc -- run examples/sum.air.json
+          code=$?
+          set -e
+          # sum.air.json returns 55; that is the process status (PHASE1_DECISIONS), not a CLI failure.
+          test "$code" -eq 55
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+
+      - name: Test (Rust)
+        run: cargo test --workspace
+
+      - name: CLI smoke (Rust)
+        run: cargo run -p airc -- version
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build dev image
+        run: docker compose build dev
+
+      - name: Rust version in container
+        run: docker compose run --rm --no-deps dev cargo run -p airc -- version
+
+      - name: Build airc release image
+        run: docker compose build airc-rs
