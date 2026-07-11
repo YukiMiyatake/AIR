@@ -1,310 +1,137 @@
 # AIR Examples
 
-> **Status:** These sketches still reflect an older **dynamic / `num` / GC-list** draft.  
-> Current design is **static types + ownership/allocators + freestanding/kernel** — see [DESIGN.md](DESIGN.md) and [VISION.md](VISION.md).  
-> This file will be rewritten in Phase 1 (typed example suite).
+Examples conform to **[air-format v0](AIR_FORMAT.md)**. Legacy dynamic/`num`/`list` sketches were removed.
 
-Same programs shown as **canonical AST**, **mnemonic view**, and a **bytecode sketch** (legacy). Treat structure (`seq` / `if` / `loop`) as informative only; types and memory ops are outdated.
+## Example 1 — Sum 1..10 (`i32`)
 
-These examples are small for clarity. They do **not** imply AIR is limited to short scripts.
-
-## Example 1 — Sum 1..n
-
-Python equivalent (for token comparison later):
+Python equivalent:
 
 ```python
-def main():
-    n = 10
+def main() -> int:
     s = 0
     i = 1
-    while i <= n:
+    while i <= 10:
         s += i
         i += 1
-    print(s)
+    return s
 ```
 
 ### Canonical AST
 
 ```json
-[
-  "mod",
-  [
-    "fn",
-    "main",
-    [],
-    [
-      "let",
-      [
-        ["n", 10],
-        ["s", 0],
-        ["i", 1]
+["mod", "sum",
+  ["fn", "main", [], "i32",
+    ["let", [
+        ["s", "i32", ["lit", "i32", "0"]],
+        ["i", "i32", ["lit", "i32", "1"]]
       ],
-      [
-        "seq",
-        [
-          "loop",
-          [
-            "if",
-            ["call", "<=", "i", "n"],
-            [
-              "seq",
-              ["let", [["s", ["call", "+", "s", "i"]]], ["seq"]],
-              ["let", [["i", ["call", "+", "i", 1]]], ["seq"]]
-            ],
-            ["break", "s"]
-          ]
-        ],
-        ["host", "print", "s"]
-      ]
-    ]
-  ]
-]
+      ["loop",
+        ["if",
+          ["call", "<=", ["var", "i"], ["lit", "i32", "10"]],
+          ["seq",
+            ["set!", "s", ["call", "+", ["var", "s"], ["var", "i"]]],
+            ["set!", "i", ["call", "+", ["var", "i"], ["lit", "i32", "1"]]]],
+          ["break", ["var", "s"]]]]]]]
 ```
 
-Note: the `let`-rebind pattern above is illustrative. A compiler may lower mutating locals to slot stores without nested `let`. Prefer the mnemonic / bytecode view for mutation clarity.
-
-### Cleaner AST (slot-mutation friendly)
-
-Using explicit assign form allowed as sugar over slots (documented here for examples; compiler-internal):
-
-```json
-[
-  "mod",
-  [
-    "fn",
-    "main",
-    [],
-    [
-      "seq",
-      ["set!", "n", 10],
-      ["set!", "s", 0],
-      ["set!", "i", 1],
-      [
-        "loop",
-        [
-          "if",
-          ["call", "<=", "i", "n"],
-          [
-            "seq",
-            ["set!", "s", ["call", "+", "s", "i"]],
-            ["set!", "i", ["call", "+", "i", 1]]
-          ],
-          ["break", "s"]
-        ]
-      ],
-      ["host", "print", "s"]
-    ]
-  ]
-]
-```
-
-`set!` is an AST convenience for local store; it is not a host effect.
-
-### Mnemonic
+### Mnemonic (informative)
 
 ```
-fn main
-  const 10
-  store n
-  const 0
+fn main() -> i32
+  const.i32 0
   store s
-  const 1
+  const.i32 1
   store i
 loop L0
   load i
-  load n
-  cmp_le
+  const.i32 10
+  cmp.le.i32
   jump_if_false L1
   load s
   load i
-  add
+  add.i32
   store s
   load i
-  const 1
-  add
+  const.i32 1
+  add.i32
   store i
   jump L0
 L1:
   load s
-  host print 1
-  return
-```
-
-### Bytecode sketch
-
-```
-CONST 10
-STORE 0          ; n
-CONST 0
-STORE 1          ; s
-CONST 1
-STORE 2          ; i
-; L0:
-LOAD 2
-LOAD 0
-CMP_LE
-JUMP_IF_NOT L1
-LOAD 1
-LOAD 2
-ADD
-STORE 1
-LOAD 2
-CONST 1
-ADD
-STORE 2
-JUMP L0
-; L1:
-LOAD 1
-HOST print 1
-RET
-```
-
----
-
-## Example 2 — Result instead of exceptions
-
-Divide with an `err` on zero divisor; print ok value or error code.
-
-### Canonical AST
-
-```json
-[
-  "mod",
-  [
-    "fn",
-    "div",
-    ["a", "b"],
-    [
-      "if",
-      ["call", "==", "b", 0],
-      ["err", "div0", "division by zero"],
-      ["ok", ["call", "/", "a", "b"]]
-    ]
-  ],
-  [
-    "fn",
-    "main",
-    [],
-    [
-      "let",
-      [["r", ["call", "div", 10, 0]]],
-      [
-        "if",
-        ["call", "is_ok", "r"],
-        ["host", "print", ["call", "unwrap", "r"]],
-        ["host", "print", ["call", "err_code", "r"]]
-      ]
-    ]
-  ]
-]
-```
-
-### Mnemonic (main only)
-
-```
-fn main
-  const 10
-  const 0
-  call div 2
-  store r
-  load r
-  is_ok
-  jump_if_false Lerr
-  load r
-  unwrap
-  host print 1
-  jump Lend
-Lerr:
-  load r
-  err_code
-  host print 1
-Lend:
   return
 ```
 
 ---
 
-## Example 3 — List fold (no closures)
-
-Sum a list with an index loop (closures are out of scope for MVP).
-
-### Canonical AST
+## Example 2 — `Result` + `match` (checked divide)
 
 ```json
-[
-  "mod",
-  [
-    "fn",
-    "main",
-    [],
-    [
-      "seq",
-      ["set!", "xs", ["list", 1, 2, 3, 4]],
-      ["set!", "s", 0],
-      ["set!", "i", 0],
-      ["set!", "n", ["call", "len", "xs"]],
-      [
-        "loop",
-        [
-          "if",
-          ["call", "<", "i", "n"],
-          [
-            "seq",
-            [
-              "set!",
-              "s",
-              ["call", "+", "s", ["call", "get", "xs", "i"]]
-            ],
-            ["set!", "i", ["call", "+", "i", 1]]
-          ],
-          ["break", "s"]
-        ]
+["mod", "div",
+  ["fn", "checked_div", [["a", "i32"], ["b", "i32"]], ["result", "i32", "str"],
+    ["if",
+      ["call", "==", ["var", "b"], ["lit", "i32", "0"]],
+      ["call", "err", ["lit", "str", "div0"]],
+      ["call", "ok", ["call", "/", ["var", "a"], ["var", "b"]]]]],
+  ["fn", "main", [], "i32",
+    ["match",
+      ["call", "checked_div", ["lit", "i32", "10"], ["lit", "i32", "0"]],
+      [["ok", "v"], ["var", "v"]],
+      [["err", "e"], ["lit", "i32", "-1"]]]]]
+```
+
+Notes:
+
+- `ok` / `err` constructors build `["result", T, E]` values (builtins).
+- `match` arms are exhaustive for `Result`.
+
+---
+
+## Example 3 — Fixed array sum (no heap)
+
+```json
+["mod", "arr",
+  ["fn", "main", [], "i32",
+    ["let", [
+        ["xs", ["array", "i32", 4],
+          ["array_lit", "i32",
+            ["lit", "i32", "1"],
+            ["lit", "i32", "2"],
+            ["lit", "i32", "3"],
+            ["lit", "i32", "4"]]],
+        ["s", "i32", ["lit", "i32", "0"]],
+        ["i", "i32", ["lit", "i32", "0"]]
       ],
-      ["host", "print", "s"]
-    ]
-  ]
-]
+      ["loop",
+        ["if",
+          ["call", "<", ["var", "i"], ["lit", "i32", "4"]],
+          ["seq",
+            ["set!", "s",
+              ["call", "+", ["var", "s"],
+                ["call", "aget", ["var", "xs"], ["var", "i"]]]],
+            ["set!", "i", ["call", "+", ["var", "i"], ["lit", "i32", "1"]]]],
+          ["break", ["var", "s"]]]]]]]
 ```
 
-### Mnemonic
+`aget` is a v0 builtin: `aget(array[T;N], i32) -> T` (bounds: interpreter abort or later `Result`).
 
+---
+
+## Example 4 — Hosted print (`cap`)
+
+```json
+["mod", "hello",
+  ["fn", "main", [], "i32",
+    ["seq",
+      ["cap", "print", ["lit", "str", "hello"]],
+      ["lit", "i32", "0"]]]]
 ```
-fn main
-  list 1 2 3 4
-  store xs
-  const 0
-  store s
-  const 0
-  store i
-  load xs
-  len
-  store n
-loop L0
-  load i
-  load n
-  cmp_lt
-  jump_if_false L1
-  load s
-  load xs
-  load i
-  get
-  add
-  store s
-  load i
-  const 1
-  add
-  store i
-  jump L0
-L1:
-  load s
-  host print 1
-  return
-```
+
+Requires hosted profile. Freestanding must not use `cap` print.
 
 ---
 
 ## Using these examples
 
-- Token benchmarks should compare **canonical AST JSON** (minified) vs Python source for the same suite.
-- Round-trip tests (when implemented) must accept the AST forms above and regenerate equivalent mnemonic.
-- Host `print` arguments are values; formatting is host-defined.
+- Token benchmarks: minify JSON AST vs equivalent Rust/C for the same suite.
+- Round-trip tests (when implemented) must accept these modules as air-format v0.
+- Do not reintroduce dynamic `list` / untyped `num` / ad-hoc `host` tags.

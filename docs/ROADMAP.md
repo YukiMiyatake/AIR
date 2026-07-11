@@ -8,7 +8,7 @@ Phased plan toward a **statically typed, systems-capable** AIR (userland + frees
 - [DESIGN.md](DESIGN.md) — static types, ownership+allocators, profiles
 - [AIR_FORMAT.md](AIR_FORMAT.md) — **air-format v0** minimal typed AST
 - [AI_NATIVE.md](AI_NATIVE.md) — errors, process/shell, capabilities, concurrency defaults
-- [EXAMPLES.md](EXAMPLES.md) — **needs rewrite** for static/systems model
+- [EXAMPLES.md](EXAMPLES.md) — air-format v0 example suite
 - This roadmap
 
 ## Phase 1 — Typed bootstrap
