@@ -77,10 +77,32 @@ The language’s source of truth is the **AST**, not a particular file syntax. E
 
 ### Formatter rules (line Diff)
 
-- Opening tag on its line with structure; nested lists indented by 2 spaces.
-- Prefer **one primary subform per line** for `seq`, `let` bindings, `fn` items.
-- Short atoms may stay inline when the whole list fits a soft width (implementation-defined; default 96).
+- **Block forms** (`mod`, `fn`, `let`, `seq`, `loop`, `if`, `match`, `array_lit`): leading atoms stay on the opening line; each nested form is on its own indented line.
+- **`fn` signature** stays one head line: `(fn main () i32` then the body block.
+- **`let` bindings**: one binding per line inside the bindings list.
+- **Leaf / shallow forms** stay inline when short (≤ ~96 cols): `lit`, `var`, `call`, `set!`, `cap`, …
+- Soft width and shallowness are implementation-defined but stable under `airc fmt`.
 - Stable ordering: preserve AST child order (already canonical in air-format).
+
+Example (`sum`):
+
+```text
+(mod sum
+  (fn main () i32
+    (let
+      (
+        (s i32 (lit i32 0))
+        (i i32 (lit i32 1))
+      )
+      (loop
+        (if
+          (call <= (var i) (lit i32 10))
+          (seq
+            (set! s (call + (var s) (var i)))
+            (set! i (call + (var i) (lit i32 1)))
+          )
+          (break (var s)))))))
+```
 
 ## Binary tagged AST (later)
 
@@ -106,7 +128,8 @@ Retained for Phase 1 examples and TS tooling. Prefer `.air` for new fixtures onc
 | Done | [ENCODING.md](ENCODING.md); Rust `fmt` + `.air` parse; `examples/sum.air` |
 | Done | All Phase 1 examples as `.air` (+ `.air.json` parity for TS) |
 | Done | `airc hash` / `airc eq` (structural AST identity) |
-| Next | Improve line-oriented `fmt`; TS `.air` parse (optional) |
+| Done | Line-oriented `fmt` (head-inline / body-block for Diff) |
+| Next | TS `.air` parse (optional); binary `.airb` sketch |
 | Later | Binary `.airb` pack; deprecate JSON as default in docs |
 
 ## Non-goals
