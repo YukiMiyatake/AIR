@@ -9,20 +9,23 @@ Phased plan toward a **statically typed, systems-capable** AIR (userland + frees
 - [AIR_FORMAT.md](AIR_FORMAT.md) — **air-format v0** minimal typed AST
 - [OWNERSHIP.md](OWNERSHIP.md) — v0 move/`set!`/borrow operational rules
 - [ABSTRACTION.md](ABSTRACTION.md) — capability vs trait vs vtable
+- [SUBSET.md](SUBSET.md) — **Phase 1 in/out cut**
+- [CONCURRENCY.md](CONCURRENCY.md) — hosted tasks/channels + Alloc (Phase 4)
 - [AI_NATIVE.md](AI_NATIVE.md) — errors, process/shell, capabilities, concurrency defaults
 - [EXAMPLES.md](EXAMPLES.md) — air-format v0 example suite
 - This roadmap
 
 ## Phase 1 — Typed bootstrap
 
+Contract: [SUBSET.md](SUBSET.md).
+
 - **[AIR_FORMAT.md](AIR_FORMAT.md) air-format v0** — minimal typed AST (includes `match`, `str`, typed literals)
 - Typechecker (no execution of ill-typed programs)
-- Ownership/move + lexical borrows (minimal lifetime system)
-- Explicit `Alloc` / arena parameters for any heap use
-- Interpreter for typed subset (bring-up only)
-- Rewrite example suite to static types against air-format v0
+- Ownership/move + lexical borrows (minimal lifetime system) per [OWNERSHIP.md](OWNERSHIP.md)
+- Interpreter for typed subset (bring-up only); **no** tasks/channels/heap libs required
+- Example suite in [EXAMPLES.md](EXAMPLES.md)
 
-Exit criteria: ill-typed and obvious UAF/move errors fail at check time; freestanding-shaped examples use only explicit allocators; example suite parses as air-format v0.
+Exit criteria: see SUBSET definition of done.
 
 ## Phase 2 — Native + freestanding
 
@@ -46,9 +49,10 @@ Exit criteria: at least one freestanding binary (e.g. bare demo or kernel module
 
 ## Phase 4 — Concurrency
 
-- Hosted: lightweight tasks + channels
+- Hosted: lightweight tasks + channels per [CONCURRENCY.md](CONCURRENCY.md) (queues via explicit Alloc)
 - Freestanding: documented atomics / interrupt model
 - Synchronization types
+- Optional deterministic scheduler seed for replay tests
 
 ## Phase 5 — Communication IR (separate)
 

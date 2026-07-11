@@ -1,8 +1,10 @@
 # AIR Vision
 
-**AIR** (AI Intermediate Representation) is a **general-purpose systems language** whose canonical form is an explicit AST / execution IR.
+**AIR** (AI Intermediate Representation) is a **general-purpose systems language** whose canonical form is an explicit AST / execution IR (the “IR” names the representation, not a limit on product scope).
 
 It targets the same class of software as C, C++, and Rust — including **freestanding / kernel-level** code — while optimizing the **representation** for AI authors (agents) and machine clarity. It is not a dynamic scripting language and not a short-script DSL.
+
+Near-term implementation cut: [SUBSET.md](SUBSET.md).
 
 Human-oriented text syntax is secondary. Static types, explicit memory, and capability-gated effects are primary.
 

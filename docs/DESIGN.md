@@ -136,10 +136,10 @@ Stack + locals bytecode for a **typed** subset (bring-up, tests). Not the kernel
 
 ## Concurrency (target)
 
-- Lightweight tasks + channels remain the high-level hosted model.
+- Lightweight tasks + channels remain the high-level hosted model; **channel buffers come from an explicit Alloc** ([CONCURRENCY.md](CONCURRENCY.md)).
 - Freestanding/kernel: explicit threads/ISRs/atomics as **target intrinsics**; no mandatory M:N runtime in freestanding.
 - Shared mutability across tasks requires `unsafe` or typed synchronization (mutex/atomics).
-
+- Not in Phase 1 — see [SUBSET.md](SUBSET.md).
 ## Control forms (AST)
 
 Normative shapes for the bootstrap subset live in [AIR_FORMAT.md](AIR_FORMAT.md) (**air-format v0**). Summary:
