@@ -16,6 +16,7 @@ Phased plan toward a **statically typed, systems-capable** AIR (userland + frees
 - [AI_NATIVE.md](AI_NATIVE.md) — errors, process/shell, capabilities, concurrency defaults
 - [EXAMPLES.md](EXAMPLES.md) — air-format v0 example suite
 - [ENCODING.md](ENCODING.md) — S-expr / JSON / binary layers; user names vs syntax tags
+- [CODEGEN.md](CODEGEN.md) — Phase 2 native path sketch
 - This roadmap
 
 ## Phase 1 — Typed bootstrap
@@ -85,12 +86,21 @@ Exit criteria (met):
 
 ## Phase 2 — Native + freestanding
 
-- Native codegen path (backend TBD: LLVM / Cranelift / custom) **in Rust airc**
+- [CODEGEN.md](CODEGEN.md) — **Cranelift** tentative backend; `airc compile` stub (`codegen.unimplemented`)
+- Native codegen path **in Rust airc** (Cranelift MVP first; LLVM optional later)
 - `freestanding` profile: no GC, no hosted I/O runtime (`cap.print` is hosted-only)
 - Target intrinsics sketch (atomics, volatile MMIO, asm) behind `unsafe`
 - Agent loop: generate → type/borrow diagnostics → patch
 
 Exit criteria: at least one freestanding binary (e.g. bare demo or kernel module sketch) built without hosted runtime.
+
+Near-term:
+
+| Step | Deliverable |
+|------|-------------|
+| Done | CODEGEN.md + `airc compile` typechecks then stubs |
+| Next | First Cranelift IR for `sum`-class `i32`/`loop` subset |
+| Later | Link hosted binary; freestanding `_start` sketch |
 
 ## Phase 3 — Language core growth
 

@@ -1,6 +1,6 @@
 [package]
 name = "airc"
-description = "AIR toolchain (Rust) — parse/check/run"
+description = "AIR toolchain (Rust) — parse/check/run/compile stub"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -10,7 +10,7 @@ AIR is unrelated to CostGate / MCP tooling. Communication IR is a separate defer
 
 ## Status
 
-- **Primary toolchain:** Rust `crates/airc` (Phase 1.5 parity met — see [docs/ROADMAP.md](docs/ROADMAP.md))
+- **Primary toolchain:** Rust `crates/airc` (Phase 1.5 met; Phase 2 codegen sketch — [docs/CODEGEN.md](docs/CODEGEN.md))
 - **Oracle:** TypeScript `tools/airc` suite (`npm test`); optional CLI
 - Canonical text is **`.air` S-expr**; `.air.json` is legacy parity ([docs/ENCODING.md](docs/ENCODING.md))
 - **Docker-first** development ([docs/TOOLING.md](docs/TOOLING.md))
@@ -46,7 +46,7 @@ npm ci && npm test   # oracle
 
 | Doc | Contents |
 |-----|----------|
-| [docs/TOOLING.md](docs/TOOLING.md) | Docker-first; TS → Rust host language plan |
+| [docs/TOOLING.md](docs/TOOLING.md) | Docker-first; Rust primary, TS oracle |
 | [docs/VISION.md](docs/VISION.md) | Why AIR exists; systems + AI-first goals |
 | [docs/DESIGN.md](docs/DESIGN.md) | Types, memory, profiles, lowering, traits/vtables |
 | [docs/AI_NATIVE.md](docs/AI_NATIVE.md) | Memory, errors, process/shell, capabilities, DI/mocks |
@@ -58,7 +58,8 @@ npm ci && npm test   # oracle
 | [docs/PHASE1_DECISIONS.md](docs/PHASE1_DECISIONS.md) | Overflow, main exit, diagnostics, interpreter |
 | [docs/CONCURRENCY.md](docs/CONCURRENCY.md) | Hosted tasks/channels + Alloc |
 | [docs/EXAMPLES.md](docs/EXAMPLES.md) | air-format v0 example suite |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Bootstrap → Rust parity → native/freestanding |
+| [docs/CODEGEN.md](docs/CODEGEN.md) | Phase 2 native path (Cranelift sketch) |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Bootstrap → Rust primary → native/freestanding |
 
 ## Goals
 
