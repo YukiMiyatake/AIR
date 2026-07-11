@@ -1,0 +1,23 @@
+(
+  mod
+  aset_ex
+  (
+    fn
+    main
+    ()
+    i32
+    (
+      let
+      ((
+        xs
+        (array i32 3)
+        (array_lit i32 (lit i32 1) (lit i32 2) (lit i32 3))
+      ))
+      (
+        seq
+        (call aset (var xs) (lit i32 1) (lit i32 9))
+        (call aget (var xs) (lit i32 1))
+      )
+    )
+  )
+)
