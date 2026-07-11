@@ -64,6 +64,7 @@ AIR keeps **systems-level ambition** and changes the representation:
 
 - [DESIGN.md](DESIGN.md) — types, memory, execution, profiles
 - [AIR_FORMAT.md](AIR_FORMAT.md) — minimal typed AST (air-format v0)
+- [OWNERSHIP.md](OWNERSHIP.md) — v0 ownership / borrow operational rules
 - [AI_NATIVE.md](AI_NATIVE.md) — memory/errors/process/shell/capabilities (AI-Native defaults)
 - [EXAMPLES.md](EXAMPLES.md) — sketches (pending rewrite for static/systems model)
 - [ROADMAP.md](ROADMAP.md) — phases

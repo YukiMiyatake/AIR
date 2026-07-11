@@ -114,6 +114,8 @@ Agents should prefer safe AST; unsafe nodes are auditable and rare.
 
 **Why not “Zig only”?** Kernel *and* AI-authored code need stronger aliasing/ownership static checks than allocator passing alone provides.
 
+**Operational rules (v0):** [OWNERSHIP.md](OWNERSHIP.md) — moves, `set!`, lexical borrows, error codes.
+
 ## Error model
 
 No C++-style exception unwind. Fallible APIs use **`Result[T, E]`** (or equivalent tagged ok/err). Optional propagate sugar desugars to `Result`. Abort/panic is explicit and profile-restricted.
