@@ -324,6 +324,42 @@ function checkExpr(
       ) {
         return "i32";
       }
+      if (callee === "fset") {
+        if (argTys.length !== 3) {
+          diags.push(err("fset(struct, field, value)", "type.call"));
+          return null;
+        }
+        const place = e[2] as Expr;
+        if (!Array.isArray(place) || place[0] !== "var" || typeof place[1] !== "string") {
+          diags.push(err('v0 fset place must be ["var", name]', "type.call"));
+          return null;
+        }
+        const fname = e[3];
+        if (typeof fname !== "string") {
+          diags.push(err("fset field must be a string name", "type.call"));
+          return null;
+        }
+        const placeTy = argTys[0]!;
+        if (!Array.isArray(placeTy) || placeTy[0] !== "named") {
+          diags.push(err("fset of non-named type", "type.call"));
+          return null;
+        }
+        const fields = structs.get(placeTy[1]);
+        if (!fields) {
+          diags.push(err(`unknown struct \`${placeTy[1]}\``, "type.unbound"));
+          return null;
+        }
+        const fty = fields.find(([n]) => n === fname)?.[1];
+        if (!fty) {
+          diags.push(err(`unknown field \`${fname}\` on \`${placeTy[1]}\``, "type.field"));
+          return null;
+        }
+        if (!tyEq(fty, argTys[2]!)) {
+          diags.push(err(`fset field \`${fname}\` type mismatch`, "type.mismatch"));
+          return null;
+        }
+        return "i32";
+      }
       const fn = fns.get(callee);
       if (!fn) {
         diags.push(err(`unknown function ${callee}`, "type.unbound"));

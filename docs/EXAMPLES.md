@@ -238,6 +238,27 @@ Expected `main` → `7`.
 
 ---
 
+## Example 11 — Field store (`fset`)
+
+```json
+["mod", "fset_ex",
+  ["struct", "Point", [["x", "i32"], ["y", "i32"]]],
+  ["fn", "main", [], "i32",
+    ["let", [
+        ["p", ["named", "Point"],
+          ["struct_lit", "Point",
+            ["x", ["lit", "i32", "3"]],
+            ["y", ["lit", "i32", "4"]]]]
+      ],
+      ["seq",
+        ["call", "fset", ["var", "p"], "x", ["lit", "i32", "10"]],
+        ["field", ["var", "p"], "x"]]]]]
+```
+
+v0: first argument must be `["var", name]`. Returns `i32` `0` from `fset`; example reads `x` → `10`.
+
+---
+
 ## Using these examples
 
 Primary fixtures are **S-expr** (`.air`). JSON (`.air.json`) remains for the TS bootstrap and parity checks — see [ENCODING.md](ENCODING.md).
@@ -256,6 +277,7 @@ Primary fixtures are **S-expr** (`.air`). JSON (`.air.json`) remains for the TS 
 | `point.air` | `7` (`struct` + `field`) |
 | `option.air` | `42` (`enum` + `variant` match) |
 | `pair.air` | `7` (tuple enum payload) |
+| `fset.air` | `10` (`fset` field store) |
 | `bad_enum_match.air` | **check fails** (`type.match` non-exhaustive) |
 
 ```bash

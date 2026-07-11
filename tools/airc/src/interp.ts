@@ -112,6 +112,21 @@ function evalExpr(e: Expr, env: Map<string, AirValue>, fns: Map<string, FnItem>)
         slot.elems[idx] = val;
         return { tag: "i32", v: 0 };
       }
+      if (callee === "fset") {
+        const place = e[2] as Expr;
+        if (!Array.isArray(place) || place[0] !== "var" || typeof place[1] !== "string") {
+          throw new Error('runtime.fset: place must be ["var", name]');
+        }
+        const name = place[1];
+        const fname = e[3];
+        if (typeof fname !== "string") throw new Error("runtime.fset field");
+        const val = evalExpr(e[4] as Expr, env, fns);
+        const slot = env.get(name);
+        if (!slot || slot.tag !== "struct") throw new Error("runtime.fset");
+        if (!slot.fields.has(fname)) throw new Error(`runtime.fset missing ${fname}`);
+        slot.fields.set(fname, val);
+        return { tag: "i32", v: 0 };
+      }
       const args = (e.slice(2) as Expr[]).map((a) => evalExpr(a, env, fns));
       if (callee === "+") return { tag: "i32", v: (asI32(args[0]!) + asI32(args[1]!)) | 0 };
       if (callee === "-") return { tag: "i32", v: (asI32(args[0]!) - asI32(args[1]!)) | 0 };

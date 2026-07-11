@@ -180,6 +180,35 @@ fn eval2(
                     }
                     _ => Err(EvalErr::Msg("runtime.aset".into())),
                 }
+            } else if callee == "fset" {
+                if rest.len() != 4 {
+                    return Err(EvalErr::Msg("runtime.fset arity".into()));
+                }
+                let (pt, prest) =
+                    tag(&rest[1]).ok_or_else(|| EvalErr::Msg("runtime.fset place".into()))?;
+                if pt != "var" {
+                    return Err(EvalErr::Msg(
+                        "runtime.fset: place must be [\"var\", name]".into(),
+                    ));
+                }
+                let name = prest[0].as_str().unwrap().to_string();
+                let fname = rest[2]
+                    .as_str()
+                    .ok_or_else(|| EvalErr::Msg("runtime.fset field".into()))?;
+                let val = eval2(&rest[3], env, fns)?;
+                let slot = env
+                    .get_mut(&name)
+                    .ok_or_else(|| EvalErr::Msg(format!("runtime.unbound: {name}")))?;
+                match slot {
+                    AirValue::Struct { fields, .. } => {
+                        if !fields.contains_key(fname) {
+                            return Err(EvalErr::Msg(format!("runtime.fset missing {fname}")));
+                        }
+                        fields.insert(fname.to_string(), val);
+                        Ok(AirValue::I32(0))
+                    }
+                    _ => Err(EvalErr::Msg("runtime.fset".into())),
+                }
             } else {
             let mut args = Vec::new();
             for a in &rest[1..] {
