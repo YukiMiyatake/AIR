@@ -1,5 +1,6 @@
 use crate::diag::{err, tag, Diagnostic};
 use serde_json::Value;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct Module {
@@ -40,6 +41,9 @@ pub fn parse_module(data: Value) -> Result<Module, Vec<Diagnostic>> {
         if it == "fn" {
             validate_fn(item)?;
         }
+        if it == "struct" {
+            validate_struct(item)?;
+        }
     }
     Ok(Module { name, raw: data })
 }
@@ -52,11 +56,38 @@ fn validate_fn(v: &Value) -> Result<(), Vec<Diagnostic>> {
     Ok(())
 }
 
+fn validate_struct(v: &Value) -> Result<(), Vec<Diagnostic>> {
+    let arr = v.as_array().unwrap();
+    if arr.len() != 3 || !arr[1].is_string() || !arr[2].is_array() {
+        return Err(vec![err(
+            "parse.invalid",
+            "struct must be [struct, name, [[field, ty], ...]]",
+        )]);
+    }
+    for f in arr[2].as_array().unwrap() {
+        let Some(fa) = f.as_array() else {
+            return Err(vec![err("parse.invalid", "struct field must be [name, ty]")]);
+        };
+        if fa.len() != 2 || !fa[0].is_string() {
+            return Err(vec![err("parse.invalid", "struct field must be [name, ty]")]);
+        }
+    }
+    Ok(())
+}
+
 pub fn fns_in_module(module: &Module) -> Vec<&Value> {
     let arr = module.raw.as_array().unwrap();
     arr.iter()
         .skip(2)
         .filter(|v| tag(v).map(|(t, _)| t == "fn").unwrap_or(false))
+        .collect()
+}
+
+pub fn structs_in_module(module: &Module) -> Vec<&Value> {
+    let arr = module.raw.as_array().unwrap();
+    arr.iter()
+        .skip(2)
+        .filter(|v| tag(v).map(|(t, _)| t == "struct").unwrap_or(false))
         .collect()
 }
 
@@ -67,4 +98,28 @@ pub fn find_fn<'a>(module: &'a Module, name: &str) -> Option<&'a Value> {
             .and_then(|n| n.as_str())
             == Some(name)
     })
+}
+
+/// Field list for a named struct: `(field_name, ty)`.
+pub type StructFields = Vec<(String, Value)>;
+
+pub fn collect_struct_defs(module: &Module) -> Result<HashMap<String, StructFields>, Vec<Diagnostic>> {
+    let mut out = HashMap::new();
+    for s in structs_in_module(module) {
+        let arr = s.as_array().unwrap();
+        let name = arr[1].as_str().unwrap().to_string();
+        if out.contains_key(&name) {
+            return Err(vec![err(
+                "parse.duplicate",
+                format!("duplicate struct `{name}`"),
+            )]);
+        }
+        let mut fields = Vec::new();
+        for f in arr[2].as_array().unwrap() {
+            let fa = f.as_array().unwrap();
+            fields.push((fa[0].as_str().unwrap().to_string(), fa[1].clone()));
+        }
+        out.insert(name, fields);
+    }
+    Ok(out)
 }

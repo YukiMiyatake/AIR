@@ -35,6 +35,10 @@ pub enum AirValue {
     Ok(Box<AirValue>),
     Err(Box<AirValue>),
     Array(Vec<AirValue>),
+    Struct {
+        name: String,
+        fields: HashMap<String, AirValue>,
+    },
 }
 
 #[derive(Debug)]
@@ -297,6 +301,38 @@ fn eval2(
                 elems.push(eval2(el, env, fns)?);
             }
             Ok(AirValue::Array(elems))
+        }
+        "struct_lit" => {
+            let name = rest[0]
+                .as_str()
+                .ok_or_else(|| EvalErr::Msg("runtime.struct_lit name".into()))?
+                .to_string();
+            let mut fields = HashMap::new();
+            for pair in &rest[1..] {
+                let pa = pair
+                    .as_array()
+                    .ok_or_else(|| EvalErr::Msg("runtime.struct_lit field".into()))?;
+                let fname = pa[0]
+                    .as_str()
+                    .ok_or_else(|| EvalErr::Msg("runtime.struct_lit field name".into()))?
+                    .to_string();
+                let v = eval2(&pa[1], env, fns)?;
+                fields.insert(fname, v);
+            }
+            Ok(AirValue::Struct { name, fields })
+        }
+        "field" => {
+            let place = eval2(&rest[0], env, fns)?;
+            let fname = rest[1]
+                .as_str()
+                .ok_or_else(|| EvalErr::Msg("runtime.field name".into()))?;
+            match place {
+                AirValue::Struct { fields, .. } => fields
+                    .get(fname)
+                    .cloned()
+                    .ok_or_else(|| EvalErr::Msg(format!("runtime.field missing {fname}"))),
+                _ => Err(EvalErr::Msg("runtime.field of non-struct".into())),
+            }
         }
         "as" => eval2(&rest[1], env, fns),
         "borrow" => {

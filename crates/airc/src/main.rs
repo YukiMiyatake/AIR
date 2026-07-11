@@ -327,10 +327,16 @@ mod tests {
     }
 
     #[test]
+    fn point_struct_field_sum_is_seven() {
+        assert_eq!(run_i32("examples/point.air"), 7);
+    }
+
+    #[test]
     fn air_matches_json_ast_for_suite() {
         use airc::{normalize_lit_digits, pack_airb, parse_sexpr_value, print_sexpr, unpack_airb};
         let names = [
             "sum", "div", "arr", "hello", "overflow", "aset", "borrow_ok", "bad_move", "bad_borrow",
+            "point",
         ];
         for name in names {
             let json_path = format!("examples/{name}.air.json");

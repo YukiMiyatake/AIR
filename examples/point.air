@@ -1,0 +1,21 @@
+(mod point
+  (struct Point
+    (
+      (x i32)
+      (y i32)
+    )
+  )
+  (fn main () i32
+    (let
+      (
+        (p (named Point)
+          (struct_lit Point
+            (x (lit i32 3))
+            (y (lit i32 4))
+          )
+        )
+      )
+      (call + (field (var p) x) (field (var p) y))
+    )
+  )
+)

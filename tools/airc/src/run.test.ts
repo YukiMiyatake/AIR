@@ -118,3 +118,14 @@ test("borrow_ok returns 7", () => {
   assert.equal(v.tag, "i32");
   if (v.tag === "i32") assert.equal(v.v, 7);
 });
+
+test("point struct field sum is 7", () => {
+  const text = readFileSync(join(root, "examples/point.air"), "utf8");
+  const parsed = parseModuleFile("examples/point.air", text);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(typecheckModule(parsed.module).ok, true);
+  const v = runModule(parsed.module);
+  assert.equal(v.tag, "i32");
+  if (v.tag === "i32") assert.equal(v.v, 7);
+});

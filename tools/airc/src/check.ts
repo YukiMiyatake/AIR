@@ -20,10 +20,15 @@ function isFloatTy(t: Ty): boolean {
   return t === "f32" || t === "f64";
 }
 
-function isCopy(t: Ty): boolean {
+function isCopy(t: Ty, structs: Map<string, [string, Ty][]>): boolean {
   if (typeof t === "string") return t !== "never";
   if (t[0] === "ref" && t[1] === "shared") return true;
-  if (t[0] === "array") return isCopy(t[1]);
+  if (t[0] === "array") return isCopy(t[1], structs);
+  if (t[0] === "named") {
+    const fields = structs.get(t[1]);
+    if (!fields) return false;
+    return fields.every(([, ft]) => isCopy(ft, structs));
+  }
   return false;
 }
 
@@ -122,6 +127,7 @@ function checkExpr(
   env: Env,
   diags: Diagnostic[],
   fns: Map<string, FnItem>,
+  structs: Map<string, [string, Ty][]>,
   breakTy: { current: Ty | null },
 ): Ty | null {
   if (typeof e === "boolean") return "bool";
@@ -145,7 +151,7 @@ function checkExpr(
         diags.push(err(`use of moved local \`${e[1]}\``, "mem.use_after_move"));
         return null;
       }
-      if (!isCopy(slot.ty)) {
+      if (!isCopy(slot.ty, structs)) {
         if (isBorrowed(slot)) {
           diags.push(err(`move of borrowed local \`${e[1]}\``, "mem.borrow_conflict"));
           return null;
@@ -157,7 +163,7 @@ function checkExpr(
     case "seq": {
       let last: Ty | null = null;
       for (let i = 1; i < e.length; i++) {
-        last = checkExpr(e[i] as Expr, env, diags, fns, breakTy);
+        last = checkExpr(e[i] as Expr, env, diags, fns, structs, breakTy);
         if (!last) return null;
       }
       return last ?? "i32";
@@ -168,7 +174,7 @@ function checkExpr(
       for (const [name, tyAnno, init] of e[1]) {
         const b = directBorrowOf(init);
         if (b) held.push(b);
-        const it = checkExpr(init, child, diags, fns, breakTy);
+        const it = checkExpr(init, child, diags, fns, structs, breakTy);
         if (!it) return null;
         if (tyAnno && !tyEq(tyAnno, it)) {
           diags.push(err(`let ${name} type mismatch`, "type.mismatch"));
@@ -176,7 +182,7 @@ function checkExpr(
         }
         child.set(name, slotNew(tyAnno ?? it));
       }
-      const out = checkExpr(e[2], child, diags, fns, breakTy);
+      const out = checkExpr(e[2], child, diags, fns, structs, breakTy);
       for (const h of held) releaseBorrow(child, h.place, h.kind);
       return out;
     }
@@ -190,7 +196,7 @@ function checkExpr(
         diags.push(err(`set! of borrowed local \`${e[1]}\``, "mem.borrow_conflict"));
         return null;
       }
-      const it = checkExpr(e[2], env, diags, fns, breakTy);
+      const it = checkExpr(e[2], env, diags, fns, structs, breakTy);
       if (!it) return null;
       if (!tyEq(slot.ty, it)) {
         diags.push(err(`set! type mismatch for ${e[1]}`, "mem.type_mismatch"));
@@ -200,16 +206,16 @@ function checkExpr(
       return slot.ty;
     }
     case "if": {
-      const c = checkExpr(e[1], env, diags, fns, breakTy);
+      const c = checkExpr(e[1], env, diags, fns, structs, breakTy);
       if (!c) return null;
       if (c !== "bool") {
         diags.push(err("if cond must be bool", "type.mismatch"));
         return null;
       }
       const envThen = cloneEnv(env);
-      const t = checkExpr(e[2], envThen, diags, fns, breakTy);
+      const t = checkExpr(e[2], envThen, diags, fns, structs, breakTy);
       const envElse = cloneEnv(env);
-      const f = checkExpr(e[3], envElse, diags, fns, breakTy);
+      const f = checkExpr(e[3], envElse, diags, fns, structs, breakTy);
       if (!t || !f) return null;
       mergeMoved(env, envThen, envElse);
       if (t === "never") return f;
@@ -222,7 +228,7 @@ function checkExpr(
     }
     case "loop": {
       const inner = { current: null as Ty | null };
-      checkExpr(e[1], env, diags, fns, inner);
+      checkExpr(e[1], env, diags, fns, structs, inner);
       if (!inner.current) {
         diags.push(err("loop needs break with value", "type.loop"));
         return null;
@@ -230,7 +236,7 @@ function checkExpr(
       return inner.current;
     }
     case "break": {
-      const t = checkExpr(e[1], env, diags, fns, breakTy);
+      const t = checkExpr(e[1], env, diags, fns, structs, breakTy);
       if (!t) return null;
       if (breakTy.current && !tyEq(breakTy.current, t)) {
         diags.push(err("break types disagree", "type.mismatch"));
@@ -240,7 +246,7 @@ function checkExpr(
       return "never";
     }
     case "return":
-      return checkExpr(e[1], env, diags, fns, breakTy);
+      return checkExpr(e[1], env, diags, fns, structs, breakTy);
     case "call": {
       const callee = e[1];
       if (typeof callee !== "string") {
@@ -250,7 +256,7 @@ function checkExpr(
       const args = e.slice(2) as Expr[];
       const argTys: Ty[] = [];
       for (const a of args) {
-        const t = checkExpr(a, env, diags, fns, breakTy);
+        const t = checkExpr(a, env, diags, fns, structs, breakTy);
         if (!t) return null;
         argTys.push(t);
       }
@@ -309,11 +315,11 @@ function checkExpr(
       return fn[3];
     }
     case "as": {
-      if (!checkExpr(e[2], env, diags, fns, breakTy)) return null;
+      if (!checkExpr(e[2], env, diags, fns, structs, breakTy)) return null;
       return e[1];
     }
     case "match": {
-      const scr = checkExpr(e[1], env, diags, fns, breakTy);
+      const scr = checkExpr(e[1], env, diags, fns, structs, breakTy);
       if (!scr) return null;
       let out: Ty | null = null;
       const armEnvs: Env[] = [];
@@ -328,7 +334,7 @@ function checkExpr(
           }
           child.set(pat[1], slotNew(pat[0] === "ok" ? scr[1] : scr[2]));
         }
-        const bt = checkExpr(arm[1], child, diags, fns, breakTy);
+        const bt = checkExpr(arm[1], child, diags, fns, structs, breakTy);
         if (!bt) return null;
         armEnvs.push(child);
         if (out && !tyEq(out, bt)) {
@@ -353,7 +359,7 @@ function checkExpr(
       }
       const elems = e.slice(2) as Expr[];
       for (const el of elems) {
-        const t = checkExpr(el, env, diags, fns, breakTy);
+        const t = checkExpr(el, env, diags, fns, structs, breakTy);
         if (!t || !tyEq(t, ty)) {
           diags.push(err("array_lit element type mismatch", "type.mismatch"));
           return null;
@@ -361,9 +367,80 @@ function checkExpr(
       }
       return ["array", ty, elems.length];
     }
+    case "struct_lit": {
+      const tyName = e[1];
+      if (typeof tyName !== "string") {
+        diags.push(err("struct_lit needs type name", "type.struct"));
+        return null;
+      }
+      const fields = structs.get(tyName);
+      if (!fields) {
+        diags.push(err(`unknown struct \`${tyName}\``, "type.unbound"));
+        return null;
+      }
+      const pairs = e.slice(2) as [string, Expr][];
+      if (pairs.length !== fields.length) {
+        diags.push(err(`struct_lit \`${tyName}\` field count mismatch`, "type.struct"));
+        return null;
+      }
+      const seen = new Set<string>();
+      for (const pair of pairs) {
+        if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== "string") {
+          diags.push(err("struct_lit field must be [name, expr]", "type.struct"));
+          return null;
+        }
+        const fname = pair[0];
+        if (seen.has(fname)) {
+          diags.push(err(`duplicate field \`${fname}\` in struct_lit`, "type.struct"));
+          return null;
+        }
+        seen.add(fname);
+        const expected = fields.find(([n]) => n === fname)?.[1];
+        if (!expected) {
+          diags.push(err(`unknown field \`${fname}\` on \`${tyName}\``, "type.struct"));
+          return null;
+        }
+        const got = checkExpr(pair[1], env, diags, fns, structs, breakTy);
+        if (!got || !tyEq(expected, got)) {
+          diags.push(err(`struct_lit field \`${fname}\` type mismatch`, "type.mismatch"));
+          return null;
+        }
+      }
+      for (const [fname] of fields) {
+        if (!seen.has(fname)) {
+          diags.push(err(`missing field \`${fname}\` in struct_lit \`${tyName}\``, "type.struct"));
+          return null;
+        }
+      }
+      return ["named", tyName];
+    }
+    case "field": {
+      const placeTy = checkExpr(e[1] as Expr, env, diags, fns, structs, breakTy);
+      if (!placeTy) return null;
+      const fname = e[2];
+      if (typeof fname !== "string") {
+        diags.push(err("field must be [field, place, name]", "type.field"));
+        return null;
+      }
+      if (!Array.isArray(placeTy) || placeTy[0] !== "named") {
+        diags.push(err("field of non-named type", "type.field"));
+        return null;
+      }
+      const fields = structs.get(placeTy[1]);
+      if (!fields) {
+        diags.push(err(`unknown struct \`${placeTy[1]}\``, "type.unbound"));
+        return null;
+      }
+      const fty = fields.find(([n]) => n === fname)?.[1];
+      if (!fty) {
+        diags.push(err(`unknown field \`${fname}\` on \`${placeTy[1]}\``, "type.field"));
+        return null;
+      }
+      return fty;
+    }
     case "cap": {
       for (let i = 2; i < e.length; i++) {
-        if (!checkExpr(e[i] as Expr, env, diags, fns, breakTy)) return null;
+        if (!checkExpr(e[i] as Expr, env, diags, fns, structs, breakTy)) return null;
       }
       return "i32";
     }
@@ -416,9 +493,15 @@ function checkExpr(
 export function typecheckModule(mod: Module): CheckResult {
   const diags: Diagnostic[] = [];
   const fns = new Map<string, FnItem>();
+  const structs = new Map<string, [string, Ty][]>();
   for (let i = 2; i < mod.length; i++) {
     const it = mod[i];
     if (Array.isArray(it) && it[0] === "fn") fns.set(it[1] as string, it as FnItem);
+    if (Array.isArray(it) && it[0] === "struct") {
+      const name = it[1] as string;
+      const fields = it[2] as [string, Ty][];
+      structs.set(name, fields);
+    }
   }
   if (!fns.has("main")) {
     return { ok: false, diags: [err("missing main", "type.main")] };
@@ -427,7 +510,7 @@ export function typecheckModule(mod: Module): CheckResult {
     const env: Env = new Map();
     for (const [n, ty] of fn[2]) env.set(n, slotNew(ty));
     const breakTy = { current: null as Ty | null };
-    const bodyTy = checkExpr(fn[4], env, diags, fns, breakTy);
+    const bodyTy = checkExpr(fn[4], env, diags, fns, structs, breakTy);
     if (!bodyTy) continue;
     if (bodyTy !== "never" && !tyEq(bodyTy, fn[3])) {
       diags.push(

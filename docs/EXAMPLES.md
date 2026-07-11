@@ -185,6 +185,27 @@ After the inner `let` ends, `set!` / use is allowed again (`borrow_ok.air.json` 
 
 ---
 
+## Example 8 — Struct literal + field (`struct` / `struct_lit` / `field`)
+
+```json
+["mod", "point",
+  ["struct", "Point", [["x", "i32"], ["y", "i32"]]],
+  ["fn", "main", [], "i32",
+    ["let", [
+        ["p", ["named", "Point"],
+          ["struct_lit", "Point",
+            ["x", ["lit", "i32", "3"]],
+            ["y", ["lit", "i32", "4"]]]]
+      ],
+      ["call", "+",
+        ["field", ["var", "p"], "x"],
+        ["field", ["var", "p"], "y"]]]]]
+```
+
+Expected `main` → `7`. User enums are still deferred.
+
+---
+
 ## Using these examples
 
 Primary fixtures are **S-expr** (`.air`). JSON (`.air.json`) remains for the TS bootstrap and parity checks — see [ENCODING.md](ENCODING.md).
@@ -200,6 +221,7 @@ Primary fixtures are **S-expr** (`.air`). JSON (`.air.json`) remains for the TS 
 | `aset.air` | `9` |
 | `bad_borrow.air` | **check fails** (`mem.borrow_conflict`) |
 | `borrow_ok.air` | `7` |
+| `point.air` | `7` (`struct` + `field`) |
 
 ```bash
 docker compose run --rm dev cargo run -p airc -- run examples/arr.air

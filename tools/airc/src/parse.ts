@@ -279,6 +279,33 @@ function parseExpr(x: unknown, diags: Diagnostic[]): Expr | null {
       if (place === null) return null;
       return ["move", place];
     }
+    case "struct_lit": {
+      if (x.length < 2 || typeof x[1] !== "string") {
+        diags.push(err("struct_lit must be [struct_lit, type_name, [field, expr]...]"));
+        return null;
+      }
+      const pairs: [string, Expr][] = [];
+      for (let i = 2; i < x.length; i++) {
+        const pair = x[i];
+        if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== "string") {
+          diags.push(err("struct_lit field must be [name, expr]"));
+          return null;
+        }
+        const ex = parseExpr(pair[1], diags);
+        if (ex === null) return null;
+        pairs.push([pair[0], ex]);
+      }
+      return ["struct_lit", x[1], ...pairs];
+    }
+    case "field": {
+      if (x.length !== 3 || typeof x[2] !== "string") {
+        diags.push(err("field must be [field, place, name]"));
+        return null;
+      }
+      const place = parseExpr(x[1], diags);
+      if (place === null) return null;
+      return ["field", place, x[2]];
+    }
     default:
       diags.push(err(`unknown expr tag: ${tag}`));
       return null;
@@ -317,8 +344,25 @@ function parseItem(x: unknown, diags: Diagnostic[]): Item | null {
     return null;
   }
   if (x[0] === "fn") return parseFn(x, diags);
-  if (x[0] === "struct" || x[0] === "enum") {
-    // Accept and keep raw for now (Phase 1 examples are fn-only).
+  if (x[0] === "struct") {
+    if (x.length !== 3 || typeof x[1] !== "string" || !Array.isArray(x[2])) {
+      diags.push(err("struct must be [struct, name, [[field, ty], ...]]"));
+      return null;
+    }
+    const fields: [string, Ty][] = [];
+    for (const f of x[2]) {
+      if (!Array.isArray(f) || f.length !== 2 || typeof f[0] !== "string") {
+        diags.push(err("struct field must be [name, ty]"));
+        return null;
+      }
+      const ty = parseTy(f[1], diags);
+      if (!ty) return null;
+      fields.push([f[0], ty]);
+    }
+    return ["struct", x[1], fields];
+  }
+  if (x[0] === "enum") {
+    // Accept and keep raw for now.
     return x as Item;
   }
   diags.push(err(`unknown item tag: ${x[0]}`));

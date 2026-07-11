@@ -53,6 +53,7 @@ pub const KNOWN_TAGS: &[&str] = &[
     "ptr",
     "slice",
     "struct_lit",
+    "field",
 ];
 
 const V_NULL: u8 = 0x00;
