@@ -12,7 +12,7 @@ use cranelift_codegen::settings::{self, Configurable};
 use cranelift_codegen::verifier::verify_function;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{default_libcall_names, FuncId, Linkage, Module as ClifModule};
+use cranelift_module::{default_libcall_names, DataDescription, FuncId, Linkage, Module as ClifModule};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -118,7 +118,7 @@ pub fn compile_module(
 
     // JIT path — prove machcode and obtain main's return value.
     let mut jit = JITModule::new(JITBuilder::with_isa(isa.clone(), default_libcall_names()));
-    let main_id = lower_all_fns(&mut jit, &fns)?;
+    let main_id = lower_all_fns(&mut jit, &fns, opts.freestanding)?;
     jit.finalize_definitions()
         .map_err(|e| vec![err("codegen.error", format!("finalize: {e}"))])?;
 
@@ -140,7 +140,7 @@ pub fn compile_module(
     }
 
     let written = if let Some(path) = opts.output {
-        let bytes = emit_object_bytes(module, isa)?;
+        let bytes = emit_object_bytes(module, isa, opts.freestanding)?;
         match CompileOutputKind::infer(path) {
             CompileOutputKind::Object => {
                 if opts.freestanding {
@@ -178,6 +178,7 @@ pub fn compile_module(
 pub fn emit_object_bytes(
     module: &Module,
     isa: Arc<dyn cranelift_codegen::isa::TargetIsa>,
+    freestanding: bool,
 ) -> Result<Vec<u8>, Vec<Diagnostic>> {
     let fns = fns_in_module(module);
     if fns.is_empty() {
@@ -189,7 +190,7 @@ pub fn emit_object_bytes(
     let builder = ObjectBuilder::new(isa, module.name.as_str(), default_libcall_names())
         .map_err(|e| vec![err("codegen.error", format!("object builder: {e}"))])?;
     let mut obj = ObjectModule::new(builder);
-    lower_all_fns(&mut obj, &fns)?;
+    lower_all_fns(&mut obj, &fns, freestanding)?;
     let product = obj.finish();
     product
         .object
@@ -267,7 +268,7 @@ fn link_hosted_executable(object_bytes: &[u8], out: &Path) -> Result<(), Vec<Dia
     })?;
 
     let status = Command::new("cc")
-        .arg("-o")
+        .args(["-no-pie", "-o"])
         .arg(out)
         .arg(&obj_path)
         .status()
@@ -368,13 +369,73 @@ fn write_freestanding_object(object_bytes: &[u8], out: &Path) -> Result<(), Vec<
     Ok(())
 }
 
+
+struct HostImports {
+    freestanding: bool,
+    puts: Option<FuncId>,
+    str_id: u32,
+}
+
+fn ensure_puts(clif: &mut impl ClifModule, host: &mut HostImports) -> Result<FuncId, Vec<Diagnostic>> {
+    if let Some(id) = host.puts {
+        return Ok(id);
+    }
+    let mut sig = clif.make_signature();
+    sig.params
+        .push(AbiParam::new(clif.isa().pointer_type()));
+    sig.returns.push(AbiParam::new(types::I32));
+    let id = clif
+        .declare_function("puts", Linkage::Import, &sig)
+        .map_err(|e| vec![err("codegen.error", format!("declare puts: {e}"))])?;
+    host.puts = Some(id);
+    Ok(id)
+}
+
+fn emit_cap_print_str(
+    clif: &mut impl ClifModule,
+    host: &mut HostImports,
+    builder: &mut FunctionBuilder<'_>,
+    s: &str,
+) -> Result<(), Vec<Diagnostic>> {
+    if host.freestanding {
+        return Err(vec![err(
+            "codegen.freestanding",
+            "cap.print is hosted-only (not available with --freestanding)",
+        )]);
+    }
+    let puts_id = ensure_puts(clif, host)?;
+    let mut bytes = s.as_bytes().to_vec();
+    bytes.push(0);
+    let name = format!(".Lair_str_{}", host.str_id);
+    host.str_id += 1;
+    let data_id = clif
+        .declare_data(&name, Linkage::Local, false, false)
+        .map_err(|e| vec![err("codegen.error", format!("declare str data: {e}"))])?;
+    let mut desc = DataDescription::new();
+    desc.define(bytes.into_boxed_slice());
+    clif.define_data(data_id, &desc)
+        .map_err(|e| vec![err("codegen.error", format!("define str data: {e}"))])?;
+    let gv = clif.declare_data_in_func(data_id, &mut builder.func);
+    let ptr_ty = clif.isa().pointer_type();
+    let ptr = builder.ins().global_value(ptr_ty, gv);
+    let puts = clif.declare_func_in_func(puts_id, &mut builder.func);
+    builder.ins().call(puts, &[ptr]);
+    Ok(())
+}
+
 fn lower_all_fns(
     clif: &mut impl ClifModule,
     fns: &[&Value],
+    freestanding: bool,
 ) -> Result<Option<FuncId>, Vec<Diagnostic>> {
     let mut fb_ctx = FunctionBuilderContext::new();
     let mut ctx = clif.make_context();
     let mut main_id = None;
+    let mut host = HostImports {
+        freestanding,
+        puts: None,
+        str_id: 0,
+    };
 
     for f in fns {
         let arr = f.as_array().unwrap();
@@ -416,7 +477,7 @@ fn lower_all_fns(
 
         ctx.func.signature = sig;
         ctx.func.name = UserFuncName::user(0, id.as_u32());
-        lower_fn_body(&mut ctx.func, &mut fb_ctx, name, params, &arr[4])?;
+        lower_fn_body(clif, &mut host, &mut ctx.func, &mut fb_ctx, name, params, &arr[4])?;
 
         verify_function(&ctx.func, clif.isa()).map_err(|e| {
             vec![err(
@@ -454,6 +515,8 @@ fn host_isa() -> Result<Arc<dyn cranelift_codegen::isa::TargetIsa>, Vec<Diagnost
 }
 
 fn lower_fn_body(
+    clif: &mut impl ClifModule,
+    host: &mut HostImports,
     func: &mut cranelift_codegen::ir::Function,
     fb_ctx: &mut FunctionBuilderContext,
     name: &str,
@@ -481,7 +544,7 @@ fn lower_fn_body(
         );
     }
 
-    match lower_expr(&mut builder, &mut env, body, None)? {
+    match lower_expr(clif, host, &mut builder, &mut env, body, None)? {
         Lowered::Value(v, ty) => {
             if ty != AirTy::I32 {
                 return Err(vec![err(
@@ -534,6 +597,8 @@ fn fork_env(
 }
 
 fn lower_expr(
+    clif: &mut impl ClifModule,
+    host: &mut HostImports,
     builder: &mut FunctionBuilder<'_>,
     env: &mut HashMap<String, Local>,
     e: &Value,
@@ -592,7 +657,7 @@ fn lower_expr(
         "seq" => {
             let mut last = Lowered::Value(builder.ins().iconst(types::I32, 0), AirTy::I32);
             for x in rest {
-                match lower_expr(builder, env, x, loop_ctx)? {
+                match lower_expr(clif, host, builder, env, x, loop_ctx)? {
                     u @ Lowered::Unreachable => return Ok(u),
                     v => last = v,
                 }
@@ -605,7 +670,7 @@ fn lower_expr(
                 let ba = b.as_array().unwrap();
                 let name = ba[0].as_str().unwrap().to_string();
                 let init = if ba.len() == 2 { &ba[1] } else { &ba[2] };
-                let (val, ty) = match lower_expr(builder, &mut child, init, loop_ctx)? {
+                let (val, ty) = match lower_expr(clif, host, builder, &mut child, init, loop_ctx)? {
                     Lowered::Value(v, t) => (v, t),
                     Lowered::Unreachable => return Ok(Lowered::Unreachable),
                 };
@@ -613,11 +678,11 @@ fn lower_expr(
                 builder.def_var(var, val);
                 child.insert(name, Local { var, ty });
             }
-            lower_expr(builder, &mut child, &rest[1], loop_ctx)
+            lower_expr(clif, host, builder, &mut child, &rest[1], loop_ctx)
         }
         "set!" => {
             let name = rest[0].as_str().unwrap();
-            let (val, ty) = match lower_expr(builder, env, &rest[1], loop_ctx)? {
+            let (val, ty) = match lower_expr(clif, host, builder, env, &rest[1], loop_ctx)? {
                 Lowered::Value(v, t) => (v, t),
                 Lowered::Unreachable => return Ok(Lowered::Unreachable),
             };
@@ -636,13 +701,13 @@ fn lower_expr(
             builder.def_var(loc.var, val);
             Ok(Lowered::Value(val, ty))
         }
-        "if" => lower_if(builder, env, &rest[0], &rest[1], &rest[2], loop_ctx),
-        "loop" => lower_loop(builder, env, &rest[0]),
+        "if" => lower_if(clif, host, builder, env, &rest[0], &rest[1], &rest[2], loop_ctx),
+        "loop" => lower_loop(clif, host, builder, env, &rest[0]),
         "break" => {
             let ctx = loop_ctx.ok_or_else(|| {
                 vec![err("codegen.unsupported", "break outside loop")]
             })?;
-            let (val, ty) = match lower_expr(builder, env, &rest[0], loop_ctx)? {
+            let (val, ty) = match lower_expr(clif, host, builder, env, &rest[0], loop_ctx)? {
                 Lowered::Value(v, t) => (v, t),
                 Lowered::Unreachable => return Ok(Lowered::Unreachable),
             };
@@ -656,7 +721,7 @@ fn lower_expr(
             Ok(Lowered::Unreachable)
         }
         "return" => {
-            let (val, ty) = match lower_expr(builder, env, &rest[0], loop_ctx)? {
+            let (val, ty) = match lower_expr(clif, host, builder, env, &rest[0], loop_ctx)? {
                 Lowered::Value(v, t) => (v, t),
                 Lowered::Unreachable => return Ok(Lowered::Unreachable),
             };
@@ -669,7 +734,40 @@ fn lower_expr(
             builder.ins().return_(&[val]);
             Ok(Lowered::Unreachable)
         }
-        "call" => lower_call(builder, env, rest, loop_ctx),
+                "cap" => {
+            if rest[0].as_str() != Some("print") {
+                return Err(vec![err(
+                    "codegen.unsupported",
+                    format!("cap `{}` not in Cranelift MVP", rest[0]),
+                )]);
+            }
+            if rest.len() != 2 {
+                return Err(vec![err(
+                    "codegen.unsupported",
+                    "cap.print expects one argument",
+                )]);
+            }
+            // MVP: string literals only (matches hello.air).
+            let (lt, lrest) = tag(&rest[1]).ok_or_else(|| {
+                vec![err(
+                    "codegen.unsupported",
+                    "cap.print MVP supports (lit str ...) only",
+                )]
+            })?;
+            if lt != "lit" || lrest[0].as_str() != Some("str") {
+                return Err(vec![err(
+                    "codegen.unsupported",
+                    "cap.print MVP supports string literals only",
+                )]);
+            }
+            let s = lrest[1]
+                .as_str()
+                .ok_or_else(|| vec![err("codegen.error", "cap.print str lit")])?;
+            emit_cap_print_str(clif, host, builder, s)?;
+            let v = builder.ins().iconst(types::I32, 0);
+            Ok(Lowered::Value(v, AirTy::I32))
+        }
+        "call" => lower_call(clif, host, builder, env, rest, loop_ctx),
         other => Err(vec![err(
             "codegen.unsupported",
             format!("expr `{other}` not in Cranelift MVP (sum-class subset)"),
@@ -678,6 +776,8 @@ fn lower_expr(
 }
 
 fn lower_if(
+    clif: &mut impl ClifModule,
+    host: &mut HostImports,
     builder: &mut FunctionBuilder<'_>,
     env: &mut HashMap<String, Local>,
     cond_e: &Value,
@@ -685,7 +785,7 @@ fn lower_if(
     else_e: &Value,
     loop_ctx: Option<&LoopCtx>,
 ) -> Result<Lowered, Vec<Diagnostic>> {
-    let (cond, cty) = match lower_expr(builder, env, cond_e, loop_ctx)? {
+    let (cond, cty) = match lower_expr(clif, host, builder, env, cond_e, loop_ctx)? {
         Lowered::Value(v, t) => (v, t),
         Lowered::Unreachable => return Ok(Lowered::Unreachable),
     };
@@ -701,7 +801,7 @@ fn lower_if(
 
     builder.switch_to_block(then_b);
     builder.seal_block(then_b);
-    let then_ty = match lower_expr(builder, env, then_e, loop_ctx)? {
+    let then_ty = match lower_expr(clif, host, builder, env, then_e, loop_ctx)? {
         Lowered::Value(v, ty) => {
             ensure_merge_param(builder, merge, ty);
             builder.ins().jump(merge, &[BlockArg::from(v)]);
@@ -712,7 +812,7 @@ fn lower_if(
 
     builder.switch_to_block(else_b);
     builder.seal_block(else_b);
-    let else_ty = match lower_expr(builder, env, else_e, loop_ctx)? {
+    let else_ty = match lower_expr(clif, host, builder, env, else_e, loop_ctx)? {
         Lowered::Value(v, ty) => {
             ensure_merge_param(builder, merge, ty);
             if let Some(tt) = then_ty {
@@ -751,6 +851,8 @@ fn ensure_merge_param(
 }
 
 fn lower_loop(
+    clif: &mut impl ClifModule,
+    host: &mut HostImports,
     builder: &mut FunctionBuilder<'_>,
     env: &mut HashMap<String, Local>,
     body: &Value,
@@ -763,7 +865,7 @@ fn lower_loop(
 
     builder.switch_to_block(header);
     let ctx = LoopCtx { exit };
-    match lower_expr(builder, env, body, Some(&ctx))? {
+    match lower_expr(clif, host, builder, env, body, Some(&ctx))? {
         Lowered::Value(..) => {
             builder.ins().jump(header, &[]);
         }
@@ -778,6 +880,8 @@ fn lower_loop(
 }
 
 fn lower_call(
+    clif: &mut impl ClifModule,
+    host: &mut HostImports,
     builder: &mut FunctionBuilder<'_>,
     env: &mut HashMap<String, Local>,
     rest: &[Value],
@@ -786,7 +890,7 @@ fn lower_call(
     let callee = rest[0].as_str().unwrap();
     let mut args = Vec::new();
     for a in &rest[1..] {
-        match lower_expr(builder, env, a, loop_ctx)? {
+        match lower_expr(clif, host, builder, env, a, loop_ctx)? {
             Lowered::Value(v, t) => args.push((v, t)),
             Lowered::Unreachable => return Ok(Lowered::Unreachable),
         }
@@ -956,16 +1060,59 @@ mod tests {
     }
 
     #[test]
-    fn compile_rejects_cap_print() {
+    fn compile_hello_cap_print() {
         let text = std::fs::read_to_string("examples/hello.air")
             .or_else(|_| std::fs::read_to_string("../../examples/hello.air"))
             .expect("hello.air");
         let module = parse_module_file("examples/hello.air", &text).expect("parse");
         typecheck_module(&module).expect("check");
-        let err = compile_module(&module, &CompileOptions::default())
-            .expect_err("cap.print unsupported");
+        let out = compile_module(&module, &CompileOptions::default()).expect("compile hello");
+        assert_eq!(out.main, Some(0));
+    }
+
+    #[test]
+    fn compile_hello_hosted_binary_prints() {
+        let text = std::fs::read_to_string("examples/hello.air")
+            .or_else(|_| std::fs::read_to_string("../../examples/hello.air"))
+            .expect("hello.air");
+        let module = parse_module_file("examples/hello.air", &text).expect("parse");
+        typecheck_module(&module).expect("check");
+        let dir = std::env::temp_dir();
+        let bin = dir.join(format!("airc-hello-bin-{}", std::process::id()));
+        compile_module(
+            &module,
+            &CompileOptions {
+                output: Some(&bin),
+                freestanding: false,
+            },
+        )
+        .expect("link hello");
+        let output = Command::new(&bin).output().expect("run hello");
+        assert_eq!(output.status.code(), Some(0));
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "hello\n");
+        let _ = std::fs::remove_file(&bin);
+    }
+
+    #[test]
+    fn freestanding_rejects_cap_print() {
+        let text = std::fs::read_to_string("examples/hello.air")
+            .or_else(|_| std::fs::read_to_string("../../examples/hello.air"))
+            .expect("hello.air");
+        let module = parse_module_file("examples/hello.air", &text).expect("parse");
+        typecheck_module(&module).expect("check");
+        let dir = std::env::temp_dir();
+        let bin = dir.join(format!("airc-hello-free-{}", std::process::id()));
+        let err = compile_module(
+            &module,
+            &CompileOptions {
+                output: Some(&bin),
+                freestanding: true,
+            },
+        )
+        .expect_err("cap.print hosted-only");
         assert!(
-            err.iter().any(|d| d.code == "codegen.unsupported"),
+            err.iter()
+                .any(|d| d.code == "codegen.freestanding" || d.code == "codegen.unsupported"),
             "{err:?}"
         );
     }
