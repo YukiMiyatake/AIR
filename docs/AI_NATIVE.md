@@ -174,7 +174,8 @@ An **explicit** ops/vtable value is AI-Native:
 
 Static trait monomorphization covers the zero-cost path; explicit vtables cover runtime substitution. Dynamic trait objects (`dyn`-like fat pointers) may come later as sugar over the same idea.
 
-Normative detail: [DESIGN.md](DESIGN.md) § Abstraction, DI, and mocks.
+Normative detail: [DESIGN.md](DESIGN.md) § Abstraction, DI, and mocks.  
+**Layering (cap vs trait vs vtable):** [ABSTRACTION.md](ABSTRACTION.md).
 
 ---
 
