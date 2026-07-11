@@ -16,6 +16,12 @@ pub use interp::{print_value, run_module, value_to_exit_code, with_stdout_captur
 pub use parse::{parse_module_json, parse_module_value, Module};
 pub use sexpr::{normalize_lit_digits, parse_sexpr_value, print_sexpr};
 
+/// Load a module from `.airb` bytes (unpack → air-format AST).
+pub fn parse_module_airb(bytes: &[u8]) -> Result<Module, Vec<Diagnostic>> {
+    let v = unpack_airb(bytes)?;
+    parse_module_value(v)
+}
+
 /// Load a module from `.air.json` (JSON) or `.air` (S-expr).
 pub fn parse_module_file(path: &str, text: &str) -> Result<Module, Vec<Diagnostic>> {
     if path.ends_with(".air.json") {
@@ -34,4 +40,24 @@ pub fn parse_module_file(path: &str, text: &str) -> Result<Module, Vec<Diagnosti
             parse_module_value(v)
         }
     }
+}
+
+/// Load a module from a filesystem path (`.air`, `.air.json`, or `.airb`).
+pub fn load_module_path(path: &str) -> Result<Module, Vec<Diagnostic>> {
+    if path.ends_with(".airb") {
+        let bytes = std::fs::read(path).map_err(|e| {
+            vec![crate::diag::err(
+                "parse.io",
+                format!("failed to read {path}: {e}"),
+            )]
+        })?;
+        return parse_module_airb(&bytes);
+    }
+    let text = std::fs::read_to_string(path).map_err(|e| {
+        vec![crate::diag::err(
+            "parse.io",
+            format!("failed to read {path}: {e}"),
+        )]
+    })?;
+    parse_module_file(path, &text)
 }
