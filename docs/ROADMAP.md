@@ -38,7 +38,7 @@ Exit criteria: see SUBSET definition of done + PHASE1_DECISIONS CLI behavior.
 - Keep TS suite as oracle until parity; then deprecate TS CLI
 - Dev workflow remains Docker-first
 
-Exit criteria: `docker compose run --rm airc-rs version` works; `check`/`run` on `examples/sum.air.json` matches TS results.
+Exit criteria: `docker compose run --rm airc-rs version` works; `check`/`run` on `examples/sum.air.json` matches TS results (**55**).
 
 ## Phase 2 — Native + freestanding
 

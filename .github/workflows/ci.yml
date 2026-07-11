@@ -43,7 +43,12 @@ jobs:
         run: cargo test --workspace
 
       - name: CLI smoke (Rust)
-        run: cargo run -p airc -- version
+        run: |
+          set +e
+          cargo run -p airc -- run examples/sum.air.json
+          code=$?
+          set -e
+          test "$code" -eq 55
 
   docker:
     runs-on: ubuntu-latest
