@@ -8,6 +8,7 @@ Phased plan toward a **statically typed, systems-capable** AIR (userland + frees
 - [DESIGN.md](DESIGN.md) — static types, ownership+allocators, profiles
 - [AIR_FORMAT.md](AIR_FORMAT.md) — **air-format v0** minimal typed AST
 - [OWNERSHIP.md](OWNERSHIP.md) — v0 move/`set!`/borrow operational rules
+- [ABSTRACTION.md](ABSTRACTION.md) — capability vs trait vs vtable
 - [AI_NATIVE.md](AI_NATIVE.md) — errors, process/shell, capabilities, concurrency defaults
 - [EXAMPLES.md](EXAMPLES.md) — air-format v0 example suite
 - This roadmap

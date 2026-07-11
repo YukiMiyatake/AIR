@@ -197,6 +197,8 @@ struct FileOps {
 
 **Do not reject vtables.** Reject only *implicit* class/prototype dispatch that agents cannot see.
 
+**Layering with capabilities:** [ABSTRACTION.md](ABSTRACTION.md).
+
 ### DI policy
 
 - Prefer **constructor-/argument-injection** of traits, ops structs, or capabilities.
