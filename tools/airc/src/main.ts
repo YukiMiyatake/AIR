@@ -1,3 +1,7 @@
+import { readFile } from "node:fs/promises";
+import { emitDiags } from "./diag.js";
+import { parseModuleJson } from "./parse.js";
+
 export type DiagMode = "text" | "json";
 
 export function parseArgs(argv: string[]): {
@@ -65,7 +69,7 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   if (opts.cmd === "version") {
-    console.log("airc 0.1.0 (phase1-scaffold)");
+    console.log("airc 0.1.0 (phase1-parser)");
     return 0;
   }
 
@@ -75,9 +79,18 @@ export async function main(argv: string[]): Promise<number> {
       console.error(usage());
       return 2;
     }
-    // Phase 1 follow-up PRs wire parse/check/run.
+    const text = await readFile(opts.file, "utf8");
+    const parsed = parseModuleJson(text);
+    if (!parsed.ok) {
+      emitDiags(parsed.diags, opts.diag, opts.file);
+      return 1;
+    }
+    if (opts.cmd === "check") {
+      console.log(`ok: parsed module ${parsed.module[1]}`);
+      return 0;
+    }
     console.error(
-      `airc ${opts.cmd}: not implemented yet (scaffold). file=${opts.file} diag=${opts.diag}`,
+      `airc run: parse ok; interpret not implemented yet (module=${parsed.module[1]})`,
     );
     return 1;
   }
